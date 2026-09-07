@@ -3,22 +3,26 @@
 // rellena automáticamente `context.clientContext.user` cuando la petición
 // trae un token válido de Identity en el header Authorization.
 
-const { getStore } = require("@netlify/blobs");
+const { getStore, connectLambda } = require("@netlify/blobs");
 
 exports.handler = async (event, context) => {
-  const user = context.clientContext && context.clientContext.user;
-
-  if (!user) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ error: "No autorizado. Inicia sesión primero." }),
-    };
-  }
-
-  const store = getStore("mi-quincena-data");
-  const key = `usuario-${user.sub}.json`;
-
   try {
+    // Necesario en este formato de función ("Lambda compatibility mode")
+    // para que @netlify/blobs sepa en qué sitio y contexto está corriendo.
+    // Sin esta línea, getStore() falla tanto en GET como en POST.
+    connectLambda(event);
+
+    const user = context.clientContext && context.clientContext.user;
+    if (!user) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: "No autorizado. Inicia sesión primero." }),
+      };
+    }
+
+    const store = getStore("mi-quincena-data");
+    const key = `usuario-${user.sub}.json`;
+
     if (event.httpMethod === "GET") {
       const data = await store.get(key, { type: "json" });
       return {
