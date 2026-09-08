@@ -1,0 +1,1 @@
+exports.handler = async (event, context) => { const user = context.clientContext && context.clientContext.user; return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: true, mensaje: "La función básica sí responde.", usuarioLogueado: user ? user.email : null, nodeVersion: process.version, }), }; };
