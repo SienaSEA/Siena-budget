@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   LineChart, Line, CartesianGrid, XAxis, YAxis,
@@ -7,7 +7,7 @@ import {
 import {
   LayoutDashboard, Receipt, Tags, Plus, Trash2, TrendingUp, TrendingDown,
   PiggyBank, Wallet, AlertTriangle, CheckCircle2, Pencil, X, Check, Table2, LogOut, Lock,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, GripVertical, Star,
 } from "lucide-react";
 import { loadData, saveData } from "./dataClient.js";
 
@@ -16,8 +16,8 @@ import { loadData, saveData } from "./dataClient.js";
 // ---------------------------------------------------------------------------
 
 const CATEGORIAS_DEFAULT = [
-  { id: 1, nombre: "Nómina", tipo: "Ingreso", presupuesto: 0, esencial: null },
-  { id: 2, nombre: "Vales", tipo: "Ingreso", presupuesto: 0, esencial: null },
+  { id: 1, nombre: "Nómina", tipo: "Ingreso", presupuesto: 0, esencial: null, esNomina: true },
+  { id: 2, nombre: "Vales", tipo: "Vale", presupuesto: 0, esencial: null },
   { id: 3, nombre: "Ahorro", tipo: "Ahorro", presupuesto: 0, esencial: true },
   { id: 4, nombre: "Tanda", tipo: "Ahorro", presupuesto: 0, esencial: true },
   { id: 5, nombre: "Nelo", tipo: "Gasto", presupuesto: 0, esencial: true },
@@ -217,6 +217,9 @@ export default function App() {
   const [movimientos, setMovimientos] = useState([]);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
   const [tab, setTab] = useState("resumen");
+  const [fabOpen, setFabOpen] = useState(false);
+  const [fabCat, setFabCat] = useState("");
+  const [fabAmt, setFabAmt] = useState("");
 
   // --- Netlify Identity: login / logout ---
   // El widget de Netlify Identity a veces deja un elemento (iframe o badge)
@@ -337,6 +340,7 @@ export default function App() {
         ...m,
         tipo: c ? c.tipo : "",
         esencial: c ? c.esencial : null,
+        esNomina: c ? !!c.esNomina : false,
         quincena: quincenaOf(m.fecha),
       };
     });
@@ -347,13 +351,14 @@ export default function App() {
     const map = {};
     movEnriched.forEach((m) => {
       if (!map[m.quincena]) {
-        map[m.quincena] = { quincena: m.quincena, ingreso: 0, gasto: 0, ahorro: 0, nomina: 0, gastoSeguro: 0 };
+        map[m.quincena] = { quincena: m.quincena, ingreso: 0, gasto: 0, ahorro: 0, vale: 0, nomina: 0, gastoSeguro: 0 };
       }
       const q = map[m.quincena];
       if (m.tipo === "Ingreso") q.ingreso += m.monto;
       if (m.tipo === "Gasto") q.gasto += m.monto;
       if (m.tipo === "Ahorro") q.ahorro += m.monto;
-      if (m.categoria === "Nómina") q.nomina += m.monto;
+      if (m.tipo === "Vale") q.vale += m.monto;
+      if (m.categoria === "Nómina" || m.esNomina) q.nomina += m.monto;
       if (m.esencial === true) q.gastoSeguro += m.monto;
     });
     return Object.values(map)
@@ -372,9 +377,15 @@ export default function App() {
   // "Actual" siempre es la quincena de HOY (1-15 -> corte del 15, 16-fin -> corte de fin de mes),
   // no la última que tenga movimientos capturados (que puede ser una fecha futura).
   const ultima = statsMap[todayQ] || {
-    quincena: todayQ, ingreso: 0, gasto: 0, ahorro: 0, nomina: 0, gastoSeguro: 0, balance: 0, libre: 0,
+    quincena: todayQ, ingreso: 0, gasto: 0, ahorro: 0, vale: 0, nomina: 0, gastoSeguro: 0, balance: 0, libre: 0,
   };
   const anterior = statsMap[prevQuincenaISO(todayQ)] || null;
+
+  // ¿Ya se capturó algo esta quincena? — para el recordatorio dentro de la app
+  const hasCapturedToday = useMemo(
+    () => movEnriched.some((m) => m.quincena === todayQ),
+    [movEnriched, todayQ]
+  );
 
   // --- grid: quincena rows, category columns ---
   const periods = useMemo(() => buildPeriods(movEnriched, padding), [movEnriched, padding]);
@@ -387,7 +398,7 @@ export default function App() {
   }, [movEnriched]);
 
   const lastNomina = useMemo(() => {
-    const noms = movEnriched.filter((m) => m.categoria === "Nómina").sort((a, b) => (a.quincena < b.quincena ? -1 : 1));
+    const noms = movEnriched.filter((m) => m.categoria === "Nómina" || m.esNomina).sort((a, b) => (a.quincena < b.quincena ? -1 : 1));
     return noms.length ? noms[noms.length - 1].monto : "";
   }, [movEnriched]);
 
@@ -411,6 +422,19 @@ export default function App() {
       persistMovimientos([...movimientos, { id, fecha: quincena, categoria, monto, notas: "" }]);
     }
   }, [movimientos, persistMovimientos]);
+
+  const openFab = useCallback(() => {
+    setFabCat((cur) => cur || categorias[0]?.nombre || "");
+    setFabAmt("");
+    setFabOpen(true);
+  }, [categorias]);
+
+  const saveFab = useCallback(() => {
+    if (!fabCat || !fabAmt) return;
+    updateCell(todayQ, fabCat, fabAmt);
+    setFabAmt("");
+    setFabOpen(false);
+  }, [fabCat, fabAmt, todayQ, updateCell]);
 
   // --- per-category totals for the current (latest) quincena + accumulated ---
   const categoriaResumen = useMemo(() => {
@@ -459,9 +483,16 @@ export default function App() {
   const addCategoria = () => {
     if (!newCat.nombre.trim()) return;
     const id = categorias.length ? Math.max(...categorias.map((c) => c.id)) + 1 : 1;
-    const esencial = newCat.tipo === "Ingreso" ? null : newCat.esencial;
-    persistCategorias([...categorias, { id, nombre: newCat.nombre.trim(), tipo: newCat.tipo, presupuesto: parseFloat(newCat.presupuesto) || 0, esencial }]);
+    const esencial = (newCat.tipo === "Ingreso" || newCat.tipo === "Vale") ? null : newCat.esencial;
+    // si es la primera categoría de Ingreso, la marcamos como Nómina principal automáticamente
+    const esNomina = newCat.tipo === "Ingreso" && !categorias.some((c) => c.tipo === "Ingreso" && c.esNomina);
+    persistCategorias([...categorias, { id, nombre: newCat.nombre.trim(), tipo: newCat.tipo, presupuesto: parseFloat(newCat.presupuesto) || 0, esencial, esNomina }]);
     setNewCat({ nombre: "", tipo: "Gasto", presupuesto: "", esencial: true });
+  };
+
+  const setNominaPrincipal = (id) => {
+    // solo una categoría puede ser la Nómina principal a la vez
+    persistCategorias(categorias.map((c) => ({ ...c, esNomina: c.id === id })));
   };
 
   if (!authReady) {
@@ -557,6 +588,8 @@ export default function App() {
             ultima={ultima} anterior={anterior}
             categoriaResumen={categoriaResumen} alertas={alertas}
             trendData={trendData} pieData={pieData}
+            hasCapturedToday={hasCapturedToday}
+            onQuickAdd={openFab}
           />
         )}
 
@@ -580,9 +613,37 @@ export default function App() {
             editingCat={editingCat} catDraft={catDraft} setCatDraft={setCatDraft}
             startEditCat={startEditCat} saveEditCat={saveEditCat} setEditingCat={setEditingCat}
             deleteCat={deleteCat} newCat={newCat} setNewCat={setNewCat} addCategoria={addCategoria}
+            reorderCategorias={persistCategorias}
+            setNominaPrincipal={setNominaPrincipal}
           />
         )}
       </main>
+
+      <button className="fab-btn" onClick={openFab} aria-label="Agregar gasto rápido">
+        <Plus size={22} />
+      </button>
+
+      {fabOpen && (
+        <div className="fab-backdrop" onClick={() => setFabOpen(false)}>
+          <div className="fab-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="fab-sheet-title">Agregar a {fmtQuincena(todayQ)}</div>
+            <label className="fab-field">
+              <span>Categoría</span>
+              <select value={fabCat} onChange={(e) => setFabCat(e.target.value)}>
+                {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+              </select>
+            </label>
+            <label className="fab-field">
+              <span>Monto</span>
+              <input type="number" min="0" step="0.01" placeholder="0.00" autoFocus value={fabAmt} onChange={(e) => setFabAmt(e.target.value)} />
+            </label>
+            <div className="fab-sheet-actions">
+              <button className="btn-secondary" onClick={() => setFabOpen(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={saveFab}><Check size={16} /> Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -620,12 +681,19 @@ function HeroRing({ pct, label }) {
   );
 }
 
-function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pieData }) {
+function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pieData, hasCapturedToday, onQuickAdd }) {
   const libreDelta = ultima && anterior ? ultima.libre - anterior.libre : null;
   const comprometidoPct = ultima && ultima.nomina ? Math.round((ultima.gastoSeguro / ultima.nomina) * 100) : 0;
 
   return (
     <div className="tab-pane">
+      {!hasCapturedToday && (
+        <section className="reminder-box">
+          <span>Todavía no has capturado nada esta quincena.</span>
+          <button className="btn-secondary" onClick={onQuickAdd}><Plus size={14} /> Agregar ahora</button>
+        </section>
+      )}
+
       <section className="hero">
         <div className="hero-eyebrow">{ultima ? `Quincena del ${fmtQuincena(ultima.quincena)}` : "Sin movimientos todavía"}</div>
         <div className="hero-row">
@@ -746,7 +814,7 @@ function GridCell({ value, placeholder, onCommit, tone }) {
   );
 }
 
-const ZERO_STATS = { ingreso: 0, gasto: 0, ahorro: 0, gastoSeguro: 0, libre: 0, balance: 0 };
+const ZERO_STATS = { ingreso: 0, gasto: 0, ahorro: 0, vale: 0, gastoSeguro: 0, libre: 0, balance: 0 };
 
 function CatIcon({ nombre, tipo }) {
   return <span className={`cat-icon tone-bg-${tipo}`}>{nombre.charAt(0)}</span>;
@@ -755,6 +823,7 @@ function CatIcon({ nombre, tipo }) {
 function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, updateCell, lastNomina, onAddQuincena, todayQ }) {
   const groups = [
     { tipo: "Ingreso", label: "Ingresos" },
+    { tipo: "Vale", label: "Vales" },
     { tipo: "Ahorro", label: "Ahorro" },
     { tipo: "Gasto", label: "Gastos" },
   ].map((g) => ({ ...g, cats: categorias.filter((c) => c.tipo === g.tipo) }));
@@ -807,7 +876,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
                     {groups.map((g) => g.cats.map((c) => {
                       const key = `${q}|${c.nombre}`;
                       const raw = cellMap[key];
-                      const placeholder = c.nombre === "Nómina" && raw === undefined ? lastNomina : "";
+                      const placeholder = (c.nombre === "Nómina" || c.esNomina) && raw === undefined ? lastNomina : "";
                       return (
                         <td key={c.id} className="cell-td">
                           <GridCell
@@ -830,7 +899,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
               <tr>
                 <td className="sticky-col total-label" title="Total acumulado">Total</td>
                 {groups.map((g) => g.cats.map((c) => (
-                  <td key={c.id} className={`num total-td ${c.nombre === "Nómina" ? "total-nomina" : ""}`}>{fmtMoney(totalByNombre[c.nombre] || 0)}</td>
+                  <td key={c.id} className={`num total-td ${(c.nombre === "Nómina" || c.esNomina) ? "total-nomina" : ""}`}>{fmtMoney(totalByNombre[c.nombre] || 0)}</td>
                 )))}
                 <td colSpan={3}></td>
               </tr>
@@ -898,7 +967,7 @@ function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCel
       <div className="mobile-cat-list">
         {categorias.map((c) => {
           const raw = cellMap[`${q}|${c.nombre}`];
-          const placeholder = c.nombre === "Nómina" && raw === undefined ? lastNomina : "";
+          const placeholder = (c.nombre === "Nómina" || c.esNomina) && raw === undefined ? lastNomina : "";
           return (
             <div className="mobile-cat-row" key={c.id}>
               <CatIcon nombre={c.nombre} tipo={c.tipo} />
@@ -923,28 +992,67 @@ function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCel
   );
 }
 
-function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEditCat, saveEditCat, setEditingCat, deleteCat, newCat, setNewCat, addCategoria }) {
+function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEditCat, saveEditCat, setEditingCat, deleteCat, newCat, setNewCat, addCategoria, reorderCategorias, setNominaPrincipal }) {
+  const dragIndex = useRef(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  const handleDrop = (i) => (e) => {
+    e.preventDefault();
+    const from = dragIndex.current;
+    setDragOverIndex(null);
+    if (from === null || from === i) return;
+    const next = [...categorias];
+    const [moved] = next.splice(from, 1);
+    next.splice(i, 0, moved);
+    reorderCategorias(next);
+    dragIndex.current = null;
+  };
+
   return (
     <div className="tab-pane">
       <section className="panel">
         <div className="panel-title">Tus categorías</div>
+        <div className="grid-hint" style={{ marginTop: -8, marginBottom: 12 }}>
+          Arrastra <GripVertical size={12} style={{ verticalAlign: "-2px" }} /> para reordenarlas. Marca con <Star size={12} style={{ verticalAlign: "-2px" }} /> cuál de tus ingresos es tu Nómina principal (se usa para calcular "Libre").
+        </div>
         <div className="table-wrap">
           <table className="ledger-table">
             <thead>
-              <tr><th>Categoría</th><th>Tipo</th><th className="num">Presupuesto quincenal</th><th>Esencial</th><th></th></tr>
+              <tr><th></th><th>Categoría</th><th>Tipo</th><th style={{ textAlign: "center" }}>Nómina</th><th className="num">Presupuesto quincenal</th><th>Esencial</th><th></th></tr>
             </thead>
             <tbody>
-              {categorias.map((c) => {
+              {categorias.map((c, i) => {
                 const isEditing = editingCat === c.id;
                 return (
-                  <tr key={c.id}>
+                  <tr
+                    key={c.id}
+                    className={dragOverIndex === i ? "drag-over" : ""}
+                    draggable
+                    onDragStart={(e) => { dragIndex.current = i; e.dataTransfer.effectAllowed = "move"; }}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverIndex(i); }}
+                    onDragLeave={() => setDragOverIndex((cur) => (cur === i ? null : cur))}
+                    onDrop={handleDrop(i)}
+                    onDragEnd={() => { dragIndex.current = null; setDragOverIndex(null); }}
+                  >
+                    <td className="drag-handle-cell"><GripVertical size={14} /></td>
                     <td>{c.nombre}</td>
                     <td>
                       {isEditing ? (
-                        <select value={catDraft.tipo} onChange={(e) => setCatDraft({ ...catDraft, tipo: e.target.value, esencial: e.target.value === "Ingreso" ? null : catDraft.esencial })}>
-                          <option>Ingreso</option><option>Gasto</option><option>Ahorro</option>
+                        <select value={catDraft.tipo} onChange={(e) => setCatDraft({ ...catDraft, tipo: e.target.value, esencial: (e.target.value === "Ingreso" || e.target.value === "Vale") ? null : catDraft.esencial })}>
+                          <option>Ingreso</option><option>Vale</option><option>Gasto</option><option>Ahorro</option>
                         </select>
                       ) : <span className={`tipo-pill tipo-${c.tipo}`}>{c.tipo}</span>}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {c.tipo === "Ingreso" ? (
+                        <button
+                          className={`nomina-star ${c.esNomina ? "active" : ""}`}
+                          onClick={() => setNominaPrincipal(c.id)}
+                          title={c.esNomina ? "Es tu Nómina principal" : "Marcar como Nómina principal"}
+                        >
+                          <Star size={15} fill={c.esNomina ? "currentColor" : "none"} />
+                        </button>
+                      ) : "—"}
                     </td>
                     <td className="num">
                       {isEditing ? (
@@ -952,7 +1060,7 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
                       ) : (c.presupuesto > 0 ? fmtMoney(c.presupuesto) : "—")}
                     </td>
                     <td>
-                      {c.tipo === "Ingreso" ? "—" : isEditing ? (
+                      {(c.tipo === "Ingreso" || c.tipo === "Vale") ? "—" : isEditing ? (
                         <select value={catDraft.esencial ? "Sí" : "No"} onChange={(e) => setCatDraft({ ...catDraft, esencial: e.target.value === "Sí" })}>
                           <option>Sí</option><option>No</option>
                         </select>
@@ -989,14 +1097,14 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
           <label>
             <span>Tipo</span>
             <select value={newCat.tipo} onChange={(e) => setNewCat({ ...newCat, tipo: e.target.value })}>
-              <option>Ingreso</option><option>Gasto</option><option>Ahorro</option>
+              <option>Ingreso</option><option>Vale</option><option>Gasto</option><option>Ahorro</option>
             </select>
           </label>
           <label>
             <span>Presupuesto quincenal</span>
             <input type="number" min="0" step="0.01" placeholder="0.00" value={newCat.presupuesto} onChange={(e) => setNewCat({ ...newCat, presupuesto: e.target.value })} />
           </label>
-          {newCat.tipo !== "Ingreso" && (
+          {(newCat.tipo !== "Ingreso" && newCat.tipo !== "Vale") && (
             <label>
               <span>Esencial</span>
               <select value={newCat.esencial ? "Sí" : "No"} onChange={(e) => setNewCat({ ...newCat, esencial: e.target.value === "Sí" })}>

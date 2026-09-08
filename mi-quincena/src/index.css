@@ -147,6 +147,7 @@
 .tipo-pill { font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
 .tipo-Ingreso { background: rgba(74,222,128,0.14); color: #4ADE80; }
 .tipo-Gasto { background: rgba(251,113,133,0.14); color: #FB7185; }
+.tipo-Vale { background: rgba(251,191,36,0.16); color: #FBBF24; }
 .tipo-Ahorro { background: rgba(129,140,248,0.16); color: #A5B4FC; }
 
 .status-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; padding: 3px 10px; border-radius: 999px; font-weight: 600; }
@@ -219,6 +220,7 @@ thead tr:nth-child(2) th { position: sticky; top: 27px; z-index: 1; padding: 8px
 .group-Ingreso { background: rgba(74,222,128,0.12); color: #4ADE80; }
 .group-Ahorro { background: rgba(129,140,248,0.14); color: #A5B4FC; }
 .group-Gasto { background: rgba(251,113,133,0.12); color: #FB7185; }
+.group-Vale { background: rgba(251,191,36,0.14); color: #FBBF24; }
 .group-Calc { background: rgba(148,163,184,0.12); color: #CBD5E1; }
 /* encabezados alineados igual que su columna (números a la derecha) */
 .cat-head { font-weight: 600; text-align: right !important; }
@@ -321,6 +323,7 @@ body { background: #1B1E24; }
 .tone-text-Ingreso { color: #4ADE80; }
 .tone-text-Ahorro { color: #A5B4FC; }
 .tone-text-Gasto { color: #FB7185; }
+.tone-text-Vale { color: #FBBF24; }
 
 /* --- Fila de la quincena actual, resaltada en un tono más claro --- */
 .current-row .sticky-col,
@@ -361,6 +364,7 @@ th.col-gastoseguro, th.col-libre { color: #F4F5F7; font-weight: 700; }
 .tone-bg-Ingreso { background: rgba(74,222,128,0.16); color: #4ADE80; }
 .tone-bg-Ahorro { background: rgba(129,140,248,0.18); color: #A5B4FC; }
 .tone-bg-Gasto { background: rgba(251,113,133,0.16); color: #FB7185; }
+.tone-bg-Vale { background: rgba(251,191,36,0.18); color: #FBBF24; }
 .cat-head-inner { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; width: 100%; }
 
 /* --- Tarjetas por quincena (móvil) --- */
@@ -398,3 +402,56 @@ th.col-gastoseguro, th.col-libre { color: #F4F5F7; font-weight: 700; }
   .desktop-only { display: none; }
   .mobile-only { display: block; }
 }
+
+/* --- Reordenar categorías arrastrando --- */
+tr[draggable="true"] { cursor: grab; }
+tr[draggable="true"]:active { cursor: grabbing; }
+.drag-handle-cell { color: #4B5160; width: 22px; padding: 8px 0 8px 10px !important; }
+tr.drag-over td { border-top: 2px solid #4ADE80; }
+
+/* --- Recordatorio: no has capturado esta quincena --- */
+.reminder-box {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); color: #FBBF24;
+  border-radius: 16px; padding: 12px 16px; font-size: 13px;
+}
+.reminder-box .btn-secondary { color: #FBBF24; border-color: rgba(251,191,36,0.4); flex-shrink: 0; }
+
+/* --- Botón flotante de captura rápida --- */
+.fab-btn {
+  position: fixed; right: 24px; bottom: 24px; z-index: 35;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: linear-gradient(135deg, #4ADE80, #22C55E); color: #0E1512; border: none;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(74,222,128,0.35);
+}
+.fab-btn:hover { filter: brightness(1.06); }
+
+.fab-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 60;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.fab-sheet {
+  background: #22262E; border-radius: 20px; padding: 22px; width: 100%; max-width: 340px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+}
+.fab-sheet-title { font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px; color: #F4F5F7; margin-bottom: 16px; }
+.fab-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #8B92A0; margin-bottom: 14px; }
+.fab-field select, .fab-field input {
+  border: 1px solid #333844; border-radius: 10px; padding: 10px 11px;
+  font-family: 'Inter', sans-serif; font-size: 14px; background: #1B1E24; color: #F4F5F7;
+}
+.fab-field select:focus, .fab-field input:focus { outline: 2px solid #4ADE80; outline-offset: 1px; }
+.fab-sheet-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+
+@media (max-width: 860px) {
+  .fab-btn { bottom: calc(76px + env(safe-area-inset-bottom)); right: 18px; }
+}
+
+/* --- Estrella de "Nómina principal" en Categorías --- */
+.nomina-star {
+  background: none; border: none; cursor: pointer; color: #4B5160;
+  display: inline-flex; align-items: center; justify-content: center; padding: 4px;
+}
+.nomina-star.active { color: #FBBF24; }
+.nomina-star:hover { color: #FBBF24; }
