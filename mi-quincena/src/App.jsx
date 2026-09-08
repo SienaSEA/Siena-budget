@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import {
   LayoutDashboard, Receipt, Tags, Plus, Trash2, TrendingUp, TrendingDown,
-  PiggyBank, Wallet, AlertTriangle, CheckCircle2, Pencil, X, Check, Table2, LogOut, Lock, Menu,
+  PiggyBank, Wallet, AlertTriangle, CheckCircle2, Pencil, X, Check, Table2, LogOut, Lock,
 } from "lucide-react";
 import { loadData, saveData } from "./dataClient.js";
 
@@ -216,7 +216,6 @@ export default function App() {
   const [movimientos, setMovimientos] = useState([]);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
   const [tab, setTab] = useState("resumen");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // --- Netlify Identity: login / logout ---
   // El widget de Netlify Identity a veces deja un elemento (iframe o badge)
@@ -279,12 +278,13 @@ export default function App() {
           setMovimientos(data.movimientos || MOVIMIENTOS_DEFAULT);
           setPadding(data.padding || DEFAULT_PADDING);
         } else {
-          // Usuario nuevo: le damos una plantilla de categorías para que
-          // empiece más rápido, pero SIN los movimientos de otra persona.
-          setCategorias(CATEGORIAS_DEFAULT);
+          // Usuario nuevo: empieza completamente en blanco, sin categorías
+          // ni movimientos de otra persona. Arranca desde la pestaña
+          // Categorías agregando las suyas propias.
+          setCategorias([]);
           setMovimientos([]);
           setPadding(DEFAULT_PADDING);
-          await saveData({ categorias: CATEGORIAS_DEFAULT, movimientos: [], padding: DEFAULT_PADDING });
+          await saveData({ categorias: [], movimientos: [], padding: DEFAULT_PADDING });
         }
         setSaveError("");
       } catch (e) {
@@ -498,33 +498,31 @@ export default function App() {
   return (
     <div className="pd-root">
       <div className="mobile-topbar">
-        <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} aria-label="Abrir menú">
-          <Menu size={20} />
+        <div className="mobile-topbar-brand">
+          <div className="brand-stamp small">MQ</div>
+          <div className="mobile-topbar-title">Mi Quincena</div>
+        </div>
+        <button className="mobile-logout-btn" onClick={() => window.netlifyIdentity && window.netlifyIdentity.logout()} aria-label="Cerrar sesión">
+          <LogOut size={16} />
         </button>
-        <div className="mobile-topbar-title">Mi Quincena</div>
       </div>
 
-      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
-
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+      <aside className="sidebar">
         <div className="brand">
           <div className="brand-stamp">MQ</div>
           <div>
             <div className="brand-title">Mi Quincena</div>
             <div className="brand-sub">control de gastos</div>
           </div>
-          <button className="sidebar-close-btn" onClick={() => setSidebarOpen(false)} aria-label="Cerrar menú">
-            <X size={18} />
-          </button>
         </div>
         <nav className="nav">
-          <button className={`nav-item ${tab === "resumen" ? "active" : ""}`} onClick={() => { setTab("resumen"); setSidebarOpen(false); }}>
+          <button className={`nav-item ${tab === "resumen" ? "active" : ""}`} onClick={() => setTab("resumen")}>
             <LayoutDashboard size={17} /> Resumen
           </button>
-          <button className={`nav-item ${tab === "tabla" ? "active" : ""}`} onClick={() => { setTab("tabla"); setSidebarOpen(false); }}>
+          <button className={`nav-item ${tab === "tabla" ? "active" : ""}`} onClick={() => setTab("tabla")}>
             <Table2 size={17} /> Tabla
           </button>
-          <button className={`nav-item ${tab === "categorias" ? "active" : ""}`} onClick={() => { setTab("categorias"); setSidebarOpen(false); }}>
+          <button className={`nav-item ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
             <Tags size={17} /> Categorías
           </button>
         </nav>
@@ -537,6 +535,18 @@ export default function App() {
           </button>
         </div>
       </aside>
+
+      <nav className="bottom-nav">
+        <button className={`bottom-nav-item ${tab === "resumen" ? "active" : ""}`} onClick={() => setTab("resumen")}>
+          <LayoutDashboard size={19} /> <span>Resumen</span>
+        </button>
+        <button className={`bottom-nav-item ${tab === "tabla" ? "active" : ""}`} onClick={() => setTab("tabla")}>
+          <Table2 size={19} /> <span>Tabla</span>
+        </button>
+        <button className={`bottom-nav-item ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
+          <Tags size={19} /> <span>Categorías</span>
+        </button>
+      </nav>
 
       <main className="main">
         {saveError && <div className="save-error">{saveError}</div>}
@@ -754,6 +764,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
           <div className="panel-title">Captura quincenal — categorías en columnas, igual que tu formato original</div>
           <button className="btn-secondary" onClick={onAddQuincena}><Plus size={14} /> Agregar quincena</button>
         </div>
+        <div className="grid-scroll-wrap">
         <div className="table-wrap tall grid-scroll">
           <table className="ledger-table grid-table">
             <thead>
@@ -808,7 +819,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
             </tbody>
             <tfoot>
               <tr>
-                <td className="sticky-col total-label">Total acumulado</td>
+                <td className="sticky-col total-label" title="Total acumulado">Total</td>
                 {groups.map((g) => g.cats.map((c) => (
                   <td key={c.id} className={`num total-td ${c.nombre === "Nómina" ? "total-nomina" : ""}`}>{fmtMoney(totalByNombre[c.nombre] || 0)}</td>
                 )))}
@@ -816,6 +827,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
               </tr>
             </tfoot>
           </table>
+        </div>
         </div>
         <div className="grid-hint">Escribe un monto y presiona Enter o haz clic fuera de la celda para guardarlo. Deja la celda vacía y guárdala para borrar ese movimiento.</div>
       </section>

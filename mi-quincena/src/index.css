@@ -75,14 +75,14 @@
 
 .hero {
   background: #22262E;
-  border-radius: 22px;
+  border-radius: 26px;
   padding: 26px 30px;
   box-shadow: 9px 9px 20px rgba(0,0,0,0.35), -6px -6px 16px rgba(255,255,255,0.02);
 }
 .hero-eyebrow { font-size: 12px; color: #6B7280; margin-bottom: 10px; letter-spacing: 0.02em; }
 .hero-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
 .hero-label { font-size: 13.5px; color: #8B92A0; margin-bottom: 6px; }
-.hero-number { font-family: 'Manrope', sans-serif; font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+.hero-number { font-family: 'Manrope', sans-serif; font-size: 50px; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
 .hero-number.pos { color: #4ADE80; }
 .hero-number.neg { color: #FB7185; }
 .hero-delta { display: flex; align-items: center; gap: 5px; font-size: 12.5px; margin-top: 10px; color: #8B92A0; }
@@ -99,7 +99,7 @@
 
 .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .stat-chip {
-  background: #22262E; border-radius: 16px;
+  background: #22262E; border-radius: 20px;
   padding: 16px 18px; display: flex; align-items: center; gap: 12px;
   box-shadow: 6px 6px 14px rgba(0,0,0,0.3), -4px -4px 10px rgba(255,255,255,0.02);
 }
@@ -112,19 +112,19 @@
 .tone-gold .stat-chip-icon { background: rgba(129,140,248,0.16); color: #A5B4FC; }
 .tone-ink .stat-chip-icon { background: rgba(148,163,184,0.16); color: #CBD5E1; }
 .stat-chip-label { font-size: 11.5px; color: #8B92A0; }
-.stat-chip-value { font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 17px; margin-top: 2px; color: #F4F5F7; }
+.stat-chip-value { font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 19px; margin-top: 2px; color: #F4F5F7; }
 
 .alert-box {
   display: flex; gap: 10px; align-items: flex-start;
   background: #2E2024; border: 1px solid #4A2B31; color: #FCA5AF;
-  border-radius: 14px; padding: 13px 16px; font-size: 13px;
+  border-radius: 18px; padding: 13px 16px; font-size: 13px;
 }
 
 .charts-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: 16px; }
 @media (max-width: 900px) { .charts-row, .stat-row { grid-template-columns: 1fr; } }
 
 .panel {
-  background: #22262E; border-radius: 18px; padding: 20px 22px;
+  background: #22262E; border-radius: 22px; padding: 20px 22px;
   box-shadow: 6px 6px 16px rgba(0,0,0,0.3), -4px -4px 10px rgba(255,255,255,0.02);
 }
 .panel-title { font-family: 'Manrope', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 14px; color: #F4F5F7; }
@@ -190,9 +190,18 @@
 }
 .btn-secondary:hover { background: #262B34; }
 
+.grid-scroll-wrap { position: relative; }
 .grid-scroll { overflow: auto; max-height: 560px; border: 1px solid #2E333D; border-radius: 14px; }
+.grid-scroll-wrap::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 22px;
+  background: linear-gradient(to right, transparent, rgba(19,21,26,0.55));
+  pointer-events: none; border-radius: 0 14px 14px 0;
+}
 .grid-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }
-.grid-table th, .grid-table td { border-bottom: 1px solid #282C34; border-right: 1px solid #262A32; white-space: nowrap; }
+/* líneas de cuadrícula más ligeras: solo horizontales dentro de un mismo grupo,
+   la separación entre grupos ya se distingue por el color de fondo */
+.grid-table th, .grid-table td { border-bottom: 1px solid #24272E; white-space: nowrap; }
+.grid-table td.cell-td, .grid-table th.cat-head { border-right: 1px solid rgba(255,255,255,0.03); }
 
 .sticky-col {
   position: sticky; left: 0; z-index: 2;
@@ -200,6 +209,7 @@
   border-right: 1.5px solid #333844 !important;
   padding: 8px 10px !important; color: #E7E9ED;
   width: 58px; max-width: 58px;
+  overflow: hidden; text-overflow: ellipsis;
 }
 .corner { z-index: 3; background: #22262E; }
 .group-row th { position: sticky; top: 0; z-index: 1; text-align: center; font-family: 'Manrope', sans-serif; font-size: 11.5px; font-weight: 700; padding: 7px 4px !important; }
@@ -210,7 +220,14 @@ thead tr:nth-child(2) th { position: sticky; top: 27px; z-index: 1; padding: 8px
 .group-Ahorro { background: rgba(129,140,248,0.14); color: #A5B4FC; }
 .group-Gasto { background: rgba(251,113,133,0.12); color: #FB7185; }
 .group-Calc { background: rgba(148,163,184,0.12); color: #CBD5E1; }
-.cat-head { font-weight: 600; }
+/* encabezados alineados igual que su columna (números a la derecha) */
+.cat-head { font-weight: 600; text-align: right !important; }
+
+/* zebra striping sutil para seguir la fila con la vista */
+.grid-table tbody tr:nth-child(even) .cell-td { background: #21252D; }
+.grid-table tbody tr:nth-child(even) .sticky-col { background: #24282F; }
+.grid-table tbody tr:hover .cell-td:not(.col-gastoseguro):not(.col-libre) { background: #2A2F38; }
+.grid-table tbody tr:hover .sticky-col { background: #2A2F38; }
 
 .quincena-cell { font-family: 'Manrope', sans-serif; font-size: 12.5px; }
 .cell-td { padding: 2px !important; text-align: right; background: #1E2128; }
@@ -219,9 +236,13 @@ thead tr:nth-child(2) th { position: sticky; top: 27px; z-index: 1; padding: 8px
   font-family: 'Inter', sans-serif; font-size: 12.5px; padding: 8px 10px;
   color: #E7E9ED; font-variant-numeric: tabular-nums;
 }
+/* menos iconos: quitamos las flechitas nativas del input numérico */
+.grid-cell-input::-webkit-outer-spin-button,
+.grid-cell-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.grid-cell-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .grid-cell-input::placeholder { color: #4B5160; }
 .grid-cell-input:focus { outline: 2px solid #4ADE80; outline-offset: -2px; background: #262B34; }
-.calc-td { font-weight: 700; padding: 8px 12px !important; color: #E7E9ED; }
+.calc-td { font-weight: 700; padding: 8px 12px !important; color: #E7E9ED; text-align: right; }
 .calc-td.neg { color: #FB7185; }
 .total-label { font-weight: 700; font-family: 'Manrope', sans-serif; background: #1F232B !important; }
 .total-td { font-weight: 700; background: #1F232B; padding: 8px 12px !important; color: #F4F5F7; }
@@ -247,51 +268,45 @@ body { background: #1B1E24; }
    MARK 1 — adaptación a celular + colores en la Tabla
    ============================================================ */
 
-/* --- Menú lateral retráctil (móvil) --- */
+/* --- Barra superior e inferior (móvil) --- */
 .mobile-topbar { display: none; }
-.sidebar-close-btn { display: none; }
-
-.hamburger-btn {
-  background: #22262E; border: 1px solid #333844; border-radius: 10px;
-  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
-  color: #E7E9ED; cursor: pointer; flex-shrink: 0;
-}
-.sidebar-backdrop {
-  display: none;
-}
+.bottom-nav { display: none; }
 
 @media (max-width: 860px) {
   .pd-root { flex-direction: column; }
 
   .mobile-topbar {
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 16px; background: #15171C; border-bottom: 1px solid #24272F;
     position: sticky; top: 0; z-index: 30;
   }
+  .mobile-topbar-brand { display: flex; align-items: center; gap: 10px; }
+  .brand-stamp.small { width: 28px; height: 28px; border-radius: 10px; font-size: 11px; }
   .mobile-topbar-title { font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px; color: #E7E9ED; }
-
-  .sidebar {
-    position: fixed; top: 0; left: 0; height: 100%; width: 250px; z-index: 50;
-    transform: translateX(-105%);
-    transition: transform 0.22s ease;
-    box-shadow: 12px 0 30px rgba(0,0,0,0.4);
-  }
-  .sidebar.open { transform: translateX(0); }
-  .sidebar-close-btn {
-    display: flex; align-items: center; justify-content: center;
-    margin-left: auto; background: none; border: none; color: #8B92A0; cursor: pointer;
-    width: 28px; height: 28px; border-radius: 8px;
-  }
-  .sidebar-close-btn:hover { background: #1F232B; color: #E7E9ED; }
-  .brand { position: relative; }
-
-  .sidebar-backdrop {
-    display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40;
+  .mobile-logout-btn {
+    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+    background: #1B1E24; border: 1px solid #333844; color: #FB7185;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
 
-  .main { padding: 16px 14px 32px; }
+  .sidebar { display: none; }
+
+  .bottom-nav {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    background: #15171C; border-top: 1px solid #24272F;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    gap: 6px;
+  }
+  .bottom-nav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: none; color: #6B7280; cursor: pointer;
+    padding: 7px 4px; border-radius: 14px; font-size: 10.5px; font-family: 'Inter', sans-serif; font-weight: 500;
+  }
+  .bottom-nav-item.active { background: #22262E; color: #4ADE80; }
+
+  .main { padding: 16px 14px 88px; }
   .hero-row { flex-direction: column; align-items: flex-start; gap: 18px; }
-  .hero-number { font-size: 36px; }
+  .hero-number { font-size: 40px; }
   .hero-ring-wrap { align-self: center; }
 
   /* columnas más angostas en la Tabla para que quepan más en pantalla chica */
