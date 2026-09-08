@@ -7,6 +7,7 @@ import {
 import {
   LayoutDashboard, Receipt, Tags, Plus, Trash2, TrendingUp, TrendingDown,
   PiggyBank, Wallet, AlertTriangle, CheckCircle2, Pencil, X, Check, Table2, LogOut, Lock,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { loadData, saveData } from "./dataClient.js";
 
@@ -745,6 +746,12 @@ function GridCell({ value, placeholder, onCommit, tone }) {
   );
 }
 
+const ZERO_STATS = { ingreso: 0, gasto: 0, ahorro: 0, gastoSeguro: 0, libre: 0, balance: 0 };
+
+function CatIcon({ nombre, tipo }) {
+  return <span className={`cat-icon tone-bg-${tipo}`}>{nombre.charAt(0)}</span>;
+}
+
 function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, updateCell, lastNomina, onAddQuincena, todayQ }) {
   const groups = [
     { tipo: "Ingreso", label: "Ingresos" },
@@ -755,15 +762,15 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
   const totalByNombre = {};
   categoriaResumen.forEach((c) => { totalByNombre[c.nombre] = c.total; });
 
-  const zeroStats = { ingreso: 0, gasto: 0, ahorro: 0, gastoSeguro: 0, libre: 0, balance: 0 };
-
   return (
     <div className="tab-pane">
       <section className="panel">
         <div className="panel-title-row">
-          <div className="panel-title">Captura quincenal — categorías en columnas, igual que tu formato original</div>
+          <div className="panel-title">Captura quincenal</div>
           <button className="btn-secondary" onClick={onAddQuincena}><Plus size={14} /> Agregar quincena</button>
         </div>
+
+        <div className="desktop-only">
         <div className="grid-scroll-wrap">
         <div className="table-wrap tall grid-scroll">
           <table className="ledger-table grid-table">
@@ -778,7 +785,9 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
               <tr>
                 <th className="sticky-col">Quincena</th>
                 {groups.map((g) => g.cats.map((c) => (
-                  <th key={c.id} className={`cat-head group-${g.tipo} tipo-text-${g.tipo}`}>{c.nombre}</th>
+                  <th key={c.id} className={`cat-head group-${g.tipo} tipo-text-${g.tipo}`}>
+                    <span className="cat-head-inner"><CatIcon nombre={c.nombre} tipo={g.tipo} />{c.nombre}</span>
+                  </th>
                 )))}
                 <th className="cat-head col-gastoseguro">Gasto Seguro</th>
                 <th className="cat-head col-libre">Libre</th>
@@ -787,7 +796,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
             </thead>
             <tbody>
               {periods.map((q) => {
-                const stats = statsMap[q] || zeroStats;
+                const stats = statsMap[q] || ZERO_STATS;
                 const isCurrent = q === todayQ;
                 return (
                   <tr key={q} className={isCurrent ? "current-row" : ""}>
@@ -830,7 +839,86 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
         </div>
         </div>
         <div className="grid-hint">Escribe un monto y presiona Enter o haz clic fuera de la celda para guardarlo. Deja la celda vacía y guárdala para borrar ese movimiento.</div>
+        </div>
+
+        <div className="mobile-only">
+          <MobileQuincenaCards
+            categorias={categorias}
+            periods={periods}
+            cellMap={cellMap}
+            statsMap={statsMap}
+            updateCell={updateCell}
+            lastNomina={lastNomina}
+            todayQ={todayQ}
+          />
+        </div>
       </section>
+    </div>
+  );
+}
+
+function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCell, lastNomina, todayQ }) {
+  const todayIdx = periods.indexOf(todayQ);
+  const [idx, setIdx] = useState(todayIdx >= 0 ? todayIdx : periods.length - 1);
+
+  useEffect(() => {
+    const i = periods.indexOf(todayQ);
+    if (i >= 0) setIdx(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayQ]);
+
+  const safeIdx = Math.min(idx, periods.length - 1);
+  const q = periods[safeIdx];
+  const stats = (q && statsMap[q]) || ZERO_STATS;
+  const isCurrent = q === todayQ;
+
+  if (!q) return <div className="empty-note">Agrega una quincena para empezar.</div>;
+
+  return (
+    <div className="mobile-cards">
+      <div className="mobile-cards-nav">
+        <button className="icon-btn" onClick={() => setIdx(Math.max(0, safeIdx - 1))} disabled={safeIdx === 0} aria-label="Quincena anterior">
+          <ChevronLeft size={16} />
+        </button>
+        <div className="mobile-cards-title">
+          <span className="mobile-cards-q">{fmtQuincena(q)}</span>
+          {isCurrent && <span className="hoy-pill">Hoy</span>}
+        </div>
+        <button className="icon-btn" onClick={() => setIdx(Math.min(periods.length - 1, safeIdx + 1))} disabled={safeIdx === periods.length - 1} aria-label="Quincena siguiente">
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      <div className="mobile-summary-row">
+        <div className="mobile-summary-chip c-forest"><span>Ingreso</span><strong>{fmtMoney(stats.ingreso)}</strong></div>
+        <div className="mobile-summary-chip c-brick"><span>Gasto</span><strong>{fmtMoney(stats.gasto)}</strong></div>
+        <div className="mobile-summary-chip c-gold"><span>Libre</span><strong>{fmtMoney(stats.libre)}</strong></div>
+      </div>
+
+      <div className="mobile-cat-list">
+        {categorias.map((c) => {
+          const raw = cellMap[`${q}|${c.nombre}`];
+          const placeholder = c.nombre === "Nómina" && raw === undefined ? lastNomina : "";
+          return (
+            <div className="mobile-cat-row" key={c.id}>
+              <CatIcon nombre={c.nombre} tipo={c.tipo} />
+              <div className="mobile-cat-info">
+                <div className="mobile-cat-name">{c.nombre}</div>
+                <div className="mobile-cat-tipo">{c.tipo}</div>
+              </div>
+              <div className="mobile-cat-amount">
+                <GridCell
+                  value={raw === undefined ? "" : raw}
+                  placeholder={placeholder ? String(placeholder) : ""}
+                  onCommit={(v) => updateCell(q, c.nombre, v)}
+                  tone={c.tipo}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {categorias.length === 0 && <div className="empty-note">Agrega categorías en la pestaña Categorías para empezar a capturar.</div>}
+      </div>
     </div>
   );
 }

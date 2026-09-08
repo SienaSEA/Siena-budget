@@ -343,3 +343,58 @@ th.col-gastoseguro, th.col-libre { color: #F4F5F7; font-weight: 700; }
 
 /* --- Celda de Total Nómina, verde claro --- */
 .total-nomina { background: rgba(74,222,128,0.22) !important; color: #F4F5F7; }
+
+/* ============================================================
+   MARK III (parte 2) — cuadrícula rica en escritorio,
+   lista de tarjetas en móvil
+   ============================================================ */
+
+.desktop-only { display: block; }
+.mobile-only { display: none; }
+
+/* iconos circulares de categoría (encabezados de la cuadrícula y tarjetas) */
+.cat-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; font-size: 9.5px; font-weight: 700;
+  flex-shrink: 0;
+}
+.tone-bg-Ingreso { background: rgba(74,222,128,0.16); color: #4ADE80; }
+.tone-bg-Ahorro { background: rgba(129,140,248,0.18); color: #A5B4FC; }
+.tone-bg-Gasto { background: rgba(251,113,133,0.16); color: #FB7185; }
+.cat-head-inner { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; width: 100%; }
+
+/* --- Tarjetas por quincena (móvil) --- */
+.mobile-cards-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.mobile-cards-title { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.mobile-cards-q { font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px; color: #F4F5F7; }
+.hoy-pill { font-size: 10px; font-weight: 600; color: #4ADE80; background: rgba(74,222,128,0.14); padding: 2px 9px; border-radius: 999px; }
+
+.mobile-summary-row { display: flex; gap: 8px; margin-bottom: 18px; }
+.mobile-summary-chip {
+  flex: 1; border-radius: 14px; padding: 10px 10px; display: flex; flex-direction: column; gap: 3px;
+}
+.mobile-summary-chip span { font-size: 10.5px; color: #8B92A0; }
+.mobile-summary-chip strong { font-size: 14.5px; font-weight: 600; font-family: 'Manrope', sans-serif; }
+.mobile-summary-chip.c-forest { background: rgba(74,222,128,0.12); }
+.mobile-summary-chip.c-forest strong { color: #4ADE80; }
+.mobile-summary-chip.c-brick { background: rgba(251,113,133,0.12); }
+.mobile-summary-chip.c-brick strong { color: #FB7185; }
+.mobile-summary-chip.c-gold { background: rgba(251,191,36,0.14); }
+.mobile-summary-chip.c-gold strong { color: #FBBF24; }
+
+.mobile-cat-list { display: flex; flex-direction: column; gap: 1px; border-radius: 16px; overflow: hidden; }
+.mobile-cat-row {
+  display: flex; align-items: center; gap: 12px; background: #22262E; padding: 12px 14px;
+}
+.mobile-cat-row .cat-icon { width: 36px; height: 36px; border-radius: 50%; font-size: 14px; }
+.mobile-cat-info { flex: 1; min-width: 0; }
+.mobile-cat-name { font-size: 14px; color: #F4F5F7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-cat-tipo { font-size: 11px; color: #8B92A0; }
+.mobile-cat-amount .grid-cell-input {
+  width: 108px; font-size: 15px; padding: 6px 4px; text-align: right;
+}
+
+@media (max-width: 860px) {
+  .desktop-only { display: none; }
+  .mobile-only { display: block; }
+}
