@@ -9,7 +9,6 @@ exports.handler = async (event, context) => {
   try {
     // Necesario en este formato de función ("Lambda compatibility mode")
     // para que @netlify/blobs sepa en qué sitio y contexto está corriendo.
-    // Sin esta línea, getStore() falla tanto en GET como en POST.
     connectLambda(event);
 
     const user = context.clientContext && context.clientContext.user;
@@ -20,7 +19,16 @@ exports.handler = async (event, context) => {
       };
     }
 
-    const store = getStore("mi-quincena-data");
+    // Workaround para un bug conocido de Netlify donde el entorno de Blobs
+    // no siempre se inyecta automáticamente en la función. Si configuraste
+    // las variables de entorno SITE_ID_MANUAL y BLOBS_TOKEN, las usamos
+    // explícitamente; si no, dependemos de la configuración automática.
+    const siteID = process.env.SITE_ID_MANUAL || process.env.SITE_ID;
+    const token = process.env.BLOBS_TOKEN;
+    const store = siteID && token
+      ? getStore({ name: "mi-quincena-data", siteID, token })
+      : getStore("mi-quincena-data");
+
     const key = `usuario-${user.sub}.json`;
 
     if (event.httpMethod === "GET") {
@@ -46,7 +54,7 @@ exports.handler = async (event, context) => {
   } catch (err) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Error del servidor", detail: String(err) }),
+      body: JSON.stringify({ error: "Error del servidor", detail: String(err && err.message || err) }),
     };
   }
 };
