@@ -7,7 +7,7 @@ import {
 import {
   LayoutDashboard, Receipt, Tags, Plus, Trash2, TrendingUp, TrendingDown,
   PiggyBank, Wallet, AlertTriangle, CheckCircle2, Pencil, X, Check, Table2, LogOut, Lock,
-  ChevronLeft, ChevronRight, GripVertical, Star,
+  ChevronLeft, ChevronRight, GripVertical, Star, Rows3, Loader2, WifiOff, Target,
 } from "lucide-react";
 import { loadData, saveData } from "./dataClient.js";
 
@@ -16,19 +16,19 @@ import { loadData, saveData } from "./dataClient.js";
 // ---------------------------------------------------------------------------
 
 const CATEGORIAS_DEFAULT = [
-  { id: 1, nombre: "Nómina", tipo: "Ingreso", presupuesto: 0, esencial: null, esNomina: true },
-  { id: 2, nombre: "Vales", tipo: "Vale", presupuesto: 0, esencial: null },
-  { id: 3, nombre: "Ahorro", tipo: "Ahorro", presupuesto: 0, esencial: true },
-  { id: 4, nombre: "Tanda", tipo: "Ahorro", presupuesto: 0, esencial: true },
-  { id: 5, nombre: "Nelo", tipo: "Gasto", presupuesto: 0, esencial: true },
-  { id: 6, nombre: "BBVA Seguro", tipo: "Gasto", presupuesto: 0, esencial: true },
-  { id: 7, nombre: "Mercado", tipo: "Gasto", presupuesto: 0, esencial: true },
-  { id: 8, nombre: "Movistar", tipo: "Gasto", presupuesto: 0, esencial: true },
-  { id: 9, nombre: "BBVA Prestamo", tipo: "Gasto", presupuesto: 0, esencial: false },
-  { id: 10, nombre: "Telmex", tipo: "Gasto", presupuesto: 0, esencial: true },
-  { id: 11, nombre: "University", tipo: "Gasto", presupuesto: 0, esencial: true },
-  { id: 12, nombre: "Auto", tipo: "Gasto", presupuesto: 0, esencial: false },
-  { id: 13, nombre: "Renta", tipo: "Gasto", presupuesto: 0, esencial: true },
+  { id: 1, nombre: "Nómina", tipo: "Ingreso", presupuesto: 0, esNomina: true, cuentaIngreso: true },
+  { id: 2, nombre: "Vales", tipo: "Vale", presupuesto: 0 },
+  { id: 3, nombre: "Ahorro", tipo: "Ahorro", presupuesto: 0 },
+  { id: 4, nombre: "Tanda", tipo: "Ahorro", presupuesto: 0 },
+  { id: 5, nombre: "Nelo", tipo: "Gasto", presupuesto: 0 },
+  { id: 6, nombre: "BBVA Seguro", tipo: "Gasto", presupuesto: 0 },
+  { id: 7, nombre: "Mercado", tipo: "Gasto", presupuesto: 0 },
+  { id: 8, nombre: "Movistar", tipo: "Gasto", presupuesto: 0 },
+  { id: 9, nombre: "BBVA Prestamo", tipo: "Gasto", presupuesto: 0 },
+  { id: 10, nombre: "Telmex", tipo: "Gasto", presupuesto: 0 },
+  { id: 11, nombre: "University", tipo: "Gasto", presupuesto: 0 },
+  { id: 12, nombre: "Auto", tipo: "Gasto", presupuesto: 0 },
+  { id: 13, nombre: "Renta", tipo: "Gasto", presupuesto: 0 },
 ];
 
 const MOVIMIENTOS_DEFAULT = [
@@ -181,13 +181,14 @@ function fmtDateShort(iso) {
 // Small building blocks
 // ---------------------------------------------------------------------------
 
-function StatChip({ icon: Icon, label, value, tone }) {
+function StatChip({ icon: Icon, label, hint, value, tone }) {
   return (
     <div className={`stat-chip tone-${tone}`}>
       <div className="stat-chip-icon"><Icon size={16} strokeWidth={2.2} /></div>
       <div>
         <div className="stat-chip-label">{label}</div>
         <div className="stat-chip-value">{fmtMoney(value)}</div>
+        {hint && <div className="stat-chip-hint">{hint}</div>}
       </div>
     </div>
   );
@@ -203,6 +204,23 @@ function StatusChip({ status }) {
   return <span className="status-chip status-neutral">Sin presupuesto</span>;
 }
 
+function SaveStatusPill({ status }) {
+  if (status === "idle") return null;
+  const map = {
+    saving: { icon: Loader2, texto: "Guardando…", cls: "st-saving" },
+    saved: { icon: CheckCircle2, texto: "Guardado", cls: "st-saved" },
+    offline: { icon: WifiOff, texto: "Sin conexión", cls: "st-offline" },
+    error: { icon: AlertTriangle, texto: "Error al guardar", cls: "st-error" },
+  };
+  const s = map[status];
+  if (!s) return null;
+  return (
+    <span className={`save-status-pill ${s.cls}`}>
+      <s.icon size={12} className={status === "saving" ? "spin" : ""} /> {s.texto}
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -215,11 +233,15 @@ export default function App() {
   const [saveError, setSaveError] = useState("");
   const [categorias, setCategorias] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
+  const [metas, setMetas] = useState([]);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
   const [tab, setTab] = useState("resumen");
   const [fabOpen, setFabOpen] = useState(false);
+  const [fabMode, setFabMode] = useState("existente"); // "existente" | "nueva"
   const [fabCat, setFabCat] = useState("");
   const [fabAmt, setFabAmt] = useState("");
+  const [fabNewNombre, setFabNewNombre] = useState("");
+  const [fabNewTipo, setFabNewTipo] = useState("Gasto");
 
   // --- Netlify Identity: login / logout ---
   // El widget de Netlify Identity a veces deja un elemento (iframe o badge)
@@ -280,6 +302,7 @@ export default function App() {
         if (data) {
           setCategorias(data.categorias || CATEGORIAS_DEFAULT);
           setMovimientos(data.movimientos || MOVIMIENTOS_DEFAULT);
+          setMetas(data.metas || []);
           setPadding(data.padding || DEFAULT_PADDING);
         } else {
           // Usuario nuevo: empieza completamente en blanco, sin categorías
@@ -287,8 +310,9 @@ export default function App() {
           // Categorías agregando las suyas propias.
           setCategorias([]);
           setMovimientos([]);
+          setMetas([]);
           setPadding(DEFAULT_PADDING);
-          await saveData({ categorias: [], movimientos: [], padding: DEFAULT_PADDING });
+          await saveData({ categorias: [], movimientos: [], metas: [], padding: DEFAULT_PADDING });
         }
         setSaveError("");
       } catch (e) {
@@ -301,29 +325,58 @@ export default function App() {
     })();
   }, [user]);
 
-  const persistAll = useCallback(async (nextCats, nextMovs, nextPad) => {
+  const persistAll = useCallback(async (nextCats, nextMovs, nextPad, nextMetas) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setSaveStatus("offline");
+      return;
+    }
+    setSaveStatus("saving");
     try {
-      await saveData({ categorias: nextCats, movimientos: nextMovs, padding: nextPad });
+      await saveData({ categorias: nextCats, movimientos: nextMovs, padding: nextPad, metas: nextMetas });
       setSaveError("");
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2000);
     } catch (e) {
       setSaveError("No se pudo guardar en la nube. Tus cambios podrían perderse al recargar.");
+      setSaveStatus("error");
     }
   }, []);
 
   const persistPadding = useCallback((next) => {
     setPadding(next);
-    persistAll(categorias, movimientos, next);
-  }, [categorias, movimientos, persistAll]);
+    persistAll(categorias, movimientos, next, metas);
+  }, [categorias, movimientos, metas, persistAll]);
 
   const persistCategorias = useCallback((next) => {
     setCategorias(next);
-    persistAll(next, movimientos, padding);
-  }, [movimientos, padding, persistAll]);
+    persistAll(next, movimientos, padding, metas);
+  }, [movimientos, padding, metas, persistAll]);
 
   const persistMovimientos = useCallback((next) => {
     setMovimientos(next);
-    persistAll(categorias, next, padding);
-  }, [categorias, padding, persistAll]);
+    persistAll(categorias, next, padding, metas);
+  }, [categorias, padding, metas, persistAll]);
+
+  const persistMetas = useCallback((next) => {
+    setMetas(next);
+    persistAll(categorias, movimientos, padding, next);
+  }, [categorias, movimientos, padding, persistAll]);
+
+  // Crea una categoría nueva Y su primer movimiento en un solo guardado
+  // (evita que dos guardados seguidos se pisen entre sí).
+  const addCategoriaAndMovimiento = useCallback((newCatPartial, quincena, monto) => {
+    const catId = categorias.length ? Math.max(...categorias.map((c) => c.id)) + 1 : 1;
+    const esNomina = newCatPartial.tipo === "Ingreso" && !categorias.some((c) => c.tipo === "Ingreso" && c.esNomina);
+    const newCat = { id: catId, ...newCatPartial, esNomina };
+    const nextCats = [...categorias, newCat];
+
+    const movId = movimientos.length ? Math.max(...movimientos.map((m) => m.id)) + 1 : 1;
+    const nextMovs = [...movimientos, { id: movId, fecha: quincena, categoria: newCat.nombre, monto, notas: "", createdAt: Date.now() }];
+
+    setCategorias(nextCats);
+    setMovimientos(nextMovs);
+    persistAll(nextCats, nextMovs, padding, metas);
+  }, [categorias, movimientos, padding, metas, persistAll]);
 
   // --- category lookup map ---
   const catMap = useMemo(() => {
@@ -332,15 +385,15 @@ export default function App() {
     return map;
   }, [categorias]);
 
-  // --- enrich movimientos with tipo/esencial/quincena ---
+  // --- enrich movimientos with tipo/quincena ---
   const movEnriched = useMemo(() => {
     return movimientos.map((m) => {
       const c = catMap[m.categoria];
       return {
         ...m,
         tipo: c ? c.tipo : "",
-        esencial: c ? c.esencial : null,
         esNomina: c ? !!c.esNomina : false,
+        cuentaIngreso: c ? c.cuentaIngreso !== false : true,
         quincena: quincenaOf(m.fecha),
       };
     });
@@ -354,12 +407,12 @@ export default function App() {
         map[m.quincena] = { quincena: m.quincena, ingreso: 0, gasto: 0, ahorro: 0, vale: 0, nomina: 0, gastoSeguro: 0 };
       }
       const q = map[m.quincena];
-      if (m.tipo === "Ingreso") q.ingreso += m.monto;
+      if (m.tipo === "Ingreso" && m.cuentaIngreso) q.ingreso += m.monto;
       if (m.tipo === "Gasto") q.gasto += m.monto;
       if (m.tipo === "Ahorro") q.ahorro += m.monto;
       if (m.tipo === "Vale") q.vale += m.monto;
       if (m.categoria === "Nómina" || m.esNomina) q.nomina += m.monto;
-      if (m.esencial === true) q.gastoSeguro += m.monto;
+      if (m.tipo === "Gasto" || m.tipo === "Ahorro") q.gastoSeguro += m.monto;
     });
     return Object.values(map)
       .map((q) => ({ ...q, balance: q.ingreso - q.gasto - q.ahorro, libre: q.nomina - q.gastoSeguro }))
@@ -397,10 +450,68 @@ export default function App() {
     return map;
   }, [movEnriched]);
 
+  const notaMap = useMemo(() => {
+    const map = {};
+    movEnriched.forEach((m) => { if (m.notas) map[`${m.quincena}|${m.categoria}`] = m.notas; });
+    return map;
+  }, [movEnriched]);
+
+  const updateNota = useCallback((quincena, categoria, notaText) => {
+    const idx = movimientos.findIndex((m) => quincenaOf(m.fecha) === quincena && m.categoria === categoria);
+    if (idx < 0) return; // sin monto capturado todavía, no hay nada que anotar
+    const next = movimientos.map((m, i) => (i === idx ? { ...m, notas: notaText } : m));
+    persistMovimientos(next);
+  }, [movimientos, persistMovimientos]);
+
   const lastNomina = useMemo(() => {
     const noms = movEnriched.filter((m) => m.categoria === "Nómina" || m.esNomina).sort((a, b) => (a.quincena < b.quincena ? -1 : 1));
     return noms.length ? noms[noms.length - 1].monto : "";
   }, [movEnriched]);
+
+  // --- "recién agregado": movimientos creados desde tu última visita a este navegador ---
+  const [lastVisit] = useState(() => {
+    try {
+      const stored = localStorage.getItem("mq-last-visit");
+      const prev = stored ? Number(stored) : 0;
+      localStorage.setItem("mq-last-visit", String(Date.now()));
+      return prev;
+    } catch (e) {
+      return 0;
+    }
+  });
+  const recentMovs = useMemo(() => {
+    if (!lastVisit) return [];
+    return movEnriched
+      .filter((m) => m.createdAt && m.createdAt > lastVisit)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }, [movEnriched, lastVisit]);
+
+  // --- racha: quincenas consecutivas con al menos un movimiento, empezando hoy hacia atrás ---
+  const racha = useMemo(() => {
+    let count = 0;
+    let q = todayQ;
+    let guard = 0;
+    while (statsMap[q] && (statsMap[q].ingreso || statsMap[q].gasto || statsMap[q].ahorro || statsMap[q].vale) && guard < 200) {
+      count++;
+      q = prevQuincenaISO(q);
+      guard++;
+    }
+    return count;
+  }, [statsMap, todayQ]);
+
+  // --- estado de guardado (guardando / guardado / sin conexión / error) ---
+  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved | offline | error
+  const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   const updateCell = useCallback((quincena, categoria, rawValue) => {
     const trimmed = String(rawValue).trim();
@@ -419,22 +530,36 @@ export default function App() {
       persistMovimientos(next);
     } else {
       const id = movimientos.length ? Math.max(...movimientos.map((m) => m.id)) + 1 : 1;
-      persistMovimientos([...movimientos, { id, fecha: quincena, categoria, monto, notas: "" }]);
+      persistMovimientos([...movimientos, { id, fecha: quincena, categoria, monto, notas: "", createdAt: Date.now() }]);
     }
   }, [movimientos, persistMovimientos]);
 
   const openFab = useCallback(() => {
+    setFabMode("existente");
     setFabCat((cur) => cur || categorias[0]?.nombre || "");
     setFabAmt("");
+    setFabNewNombre("");
+    setFabNewTipo("Gasto");
     setFabOpen(true);
   }, [categorias]);
 
   const saveFab = useCallback(() => {
+    if (fabMode === "nueva") {
+      const nombre = fabNewNombre.trim();
+      if (!nombre || !fabAmt) return;
+      const monto = parseFloat(fabAmt);
+      if (isNaN(monto)) return;
+      addCategoriaAndMovimiento({ nombre, tipo: fabNewTipo, presupuesto: 0 }, todayQ, monto);
+      setFabAmt("");
+      setFabNewNombre("");
+      setFabOpen(false);
+      return;
+    }
     if (!fabCat || !fabAmt) return;
     updateCell(todayQ, fabCat, fabAmt);
     setFabAmt("");
     setFabOpen(false);
-  }, [fabCat, fabAmt, todayQ, updateCell]);
+  }, [fabMode, fabCat, fabAmt, fabNewNombre, fabNewTipo, todayQ, updateCell, addCategoriaAndMovimiento]);
 
   // --- per-category totals for the current (latest) quincena + accumulated ---
   const categoriaResumen = useMemo(() => {
@@ -469,7 +594,7 @@ export default function App() {
   // --- category editing ---
   const [editingCat, setEditingCat] = useState(null);
   const [catDraft, setCatDraft] = useState({});
-  const [newCat, setNewCat] = useState({ nombre: "", tipo: "Gasto", presupuesto: "", esencial: true });
+  const [newCat, setNewCat] = useState({ nombre: "", tipo: "Gasto", presupuesto: "" });
 
   const startEditCat = (c) => { setEditingCat(c.id); setCatDraft({ ...c }); };
   const saveEditCat = () => {
@@ -483,16 +608,49 @@ export default function App() {
   const addCategoria = () => {
     if (!newCat.nombre.trim()) return;
     const id = categorias.length ? Math.max(...categorias.map((c) => c.id)) + 1 : 1;
-    const esencial = (newCat.tipo === "Ingreso" || newCat.tipo === "Vale") ? null : newCat.esencial;
     // si es la primera categoría de Ingreso, la marcamos como Nómina principal automáticamente
     const esNomina = newCat.tipo === "Ingreso" && !categorias.some((c) => c.tipo === "Ingreso" && c.esNomina);
-    persistCategorias([...categorias, { id, nombre: newCat.nombre.trim(), tipo: newCat.tipo, presupuesto: parseFloat(newCat.presupuesto) || 0, esencial, esNomina }]);
-    setNewCat({ nombre: "", tipo: "Gasto", presupuesto: "", esencial: true });
+    persistCategorias([...categorias, { id, nombre: newCat.nombre.trim(), tipo: newCat.tipo, presupuesto: parseFloat(newCat.presupuesto) || 0, esNomina }]);
+    setNewCat({ nombre: "", tipo: "Gasto", presupuesto: "" });
   };
 
   const setNominaPrincipal = (id) => {
     // solo una categoría puede ser la Nómina principal a la vez
     persistCategorias(categorias.map((c) => ({ ...c, esNomina: c.id === id })));
+  };
+
+  const toggleCuentaIngreso = (id) => {
+    persistCategorias(categorias.map((c) => (c.id === id ? { ...c, cuentaIngreso: !(c.cuentaIngreso !== false) } : c)));
+  };
+
+  // --- Metas de ahorro ---
+  const [editingMeta, setEditingMeta] = useState(null);
+  const [metaDraft, setMetaDraft] = useState({});
+  const [newMeta, setNewMeta] = useState({ nombre: "", montoObjetivo: "", categoria: "", montoManual: "" });
+
+  const startEditMeta = (m) => { setEditingMeta(m.id); setMetaDraft({ ...m, categoria: m.categoria || "" }); };
+  const saveEditMeta = () => {
+    const next = metas.map((m) => (m.id === editingMeta ? {
+      ...m,
+      nombre: metaDraft.nombre,
+      montoObjetivo: parseFloat(metaDraft.montoObjetivo) || 0,
+      categoria: metaDraft.categoria || null,
+      montoManual: metaDraft.categoria ? 0 : (parseFloat(metaDraft.montoManual) || 0),
+    } : m));
+    persistMetas(next);
+    setEditingMeta(null);
+  };
+  const deleteMeta = (id) => persistMetas(metas.filter((m) => m.id !== id));
+  const addMeta = () => {
+    if (!newMeta.nombre.trim()) return;
+    const id = metas.length ? Math.max(...metas.map((m) => m.id)) + 1 : 1;
+    persistMetas([...metas, {
+      id, nombre: newMeta.nombre.trim(),
+      montoObjetivo: parseFloat(newMeta.montoObjetivo) || 0,
+      categoria: newMeta.categoria || null,
+      montoManual: newMeta.categoria ? 0 : (parseFloat(newMeta.montoManual) || 0),
+    }]);
+    setNewMeta({ nombre: "", montoObjetivo: "", categoria: "", montoManual: "" });
   };
 
   if (!authReady) {
@@ -534,6 +692,7 @@ export default function App() {
           <div className="brand-stamp small">MQ</div>
           <div className="mobile-topbar-title">Mi Quincena</div>
         </div>
+        <SaveStatusPill status={isOnline ? saveStatus : "offline"} />
         <button className="mobile-logout-btn" onClick={() => window.netlifyIdentity && window.netlifyIdentity.logout()} aria-label="Cerrar sesión">
           <LogOut size={16} />
         </button>
@@ -557,8 +716,12 @@ export default function App() {
           <button className={`nav-item ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
             <Tags size={17} /> Categorías
           </button>
+          <button className={`nav-item ${tab === "metas" ? "active" : ""}`} onClick={() => setTab("metas")}>
+            <Target size={17} /> Metas
+          </button>
         </nav>
         <div className="sidebar-foot">
+          <SaveStatusPill status={isOnline ? saveStatus : "offline"} />
           <div className="sidebar-foot-label">Quincena actual</div>
           <div className="sidebar-foot-value">{fmtQuincena(ultima.quincena)}</div>
           <div className="sidebar-user-email" title={user.email}>{user.email}</div>
@@ -578,6 +741,9 @@ export default function App() {
         <button className={`bottom-nav-item ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
           <Tags size={19} /> <span>Categorías</span>
         </button>
+        <button className={`bottom-nav-item ${tab === "metas" ? "active" : ""}`} onClick={() => setTab("metas")}>
+          <Target size={19} /> <span>Metas</span>
+        </button>
       </nav>
 
       <main className="main">
@@ -590,6 +756,8 @@ export default function App() {
             trendData={trendData} pieData={pieData}
             hasCapturedToday={hasCapturedToday}
             onQuickAdd={openFab}
+            racha={racha}
+            recentMovs={recentMovs}
           />
         )}
 
@@ -604,6 +772,8 @@ export default function App() {
             lastNomina={lastNomina}
             onAddQuincena={() => persistPadding(padding + 1)}
             todayQ={todayQ}
+            notaMap={notaMap}
+            updateNota={updateNota}
           />
         )}
 
@@ -615,6 +785,18 @@ export default function App() {
             deleteCat={deleteCat} newCat={newCat} setNewCat={setNewCat} addCategoria={addCategoria}
             reorderCategorias={persistCategorias}
             setNominaPrincipal={setNominaPrincipal}
+            toggleCuentaIngreso={toggleCuentaIngreso}
+          />
+        )}
+
+        {tab === "metas" && (
+          <MetasTab
+            metas={metas}
+            categoriasAhorro={categorias.filter((c) => c.tipo === "Ahorro")}
+            categoriaResumen={categoriaResumen}
+            editingMeta={editingMeta} metaDraft={metaDraft} setMetaDraft={setMetaDraft}
+            startEditMeta={startEditMeta} saveEditMeta={saveEditMeta} setEditingMeta={setEditingMeta}
+            deleteMeta={deleteMeta} newMeta={newMeta} setNewMeta={setNewMeta} addMeta={addMeta}
           />
         )}
       </main>
@@ -627,15 +809,37 @@ export default function App() {
         <div className="fab-backdrop" onClick={() => setFabOpen(false)}>
           <div className="fab-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="fab-sheet-title">Agregar a {fmtQuincena(todayQ)}</div>
-            <label className="fab-field">
-              <span>Categoría</span>
-              <select value={fabCat} onChange={(e) => setFabCat(e.target.value)}>
-                {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-              </select>
-            </label>
+
+            <div className="fab-mode-toggle">
+              <button className={fabMode === "existente" ? "active" : ""} onClick={() => setFabMode("existente")}>Categoría existente</button>
+              <button className={fabMode === "nueva" ? "active" : ""} onClick={() => setFabMode("nueva")}>Categoría nueva</button>
+            </div>
+
+            {fabMode === "existente" ? (
+              <label className="fab-field">
+                <span>Categoría</span>
+                <select value={fabCat} onChange={(e) => setFabCat(e.target.value)}>
+                  {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+              </label>
+            ) : (
+              <>
+                <label className="fab-field">
+                  <span>Nombre de la categoría</span>
+                  <input type="text" placeholder="Ej. Netflix" autoFocus value={fabNewNombre} onChange={(e) => setFabNewNombre(e.target.value)} />
+                </label>
+                <label className="fab-field">
+                  <span>Tipo</span>
+                  <select value={fabNewTipo} onChange={(e) => setFabNewTipo(e.target.value)}>
+                    <option>Ingreso</option><option>Vale</option><option>Gasto</option><option>Ahorro</option>
+                  </select>
+                </label>
+              </>
+            )}
+
             <label className="fab-field">
               <span>Monto</span>
-              <input type="number" min="0" step="0.01" placeholder="0.00" autoFocus value={fabAmt} onChange={(e) => setFabAmt(e.target.value)} />
+              <input type="number" min="0" step="0.01" placeholder="0.00" autoFocus={fabMode === "existente"} value={fabAmt} onChange={(e) => setFabAmt(e.target.value)} />
             </label>
             <div className="fab-sheet-actions">
               <button className="btn-secondary" onClick={() => setFabOpen(false)}>Cancelar</button>
@@ -681,26 +885,54 @@ function HeroRing({ pct, label }) {
   );
 }
 
-function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pieData, hasCapturedToday, onQuickAdd }) {
+function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pieData, hasCapturedToday, onQuickAdd, racha, recentMovs }) {
   const libreDelta = ultima && anterior ? ultima.libre - anterior.libre : null;
   const comprometidoPct = ultima && ultima.nomina ? Math.round((ultima.gastoSeguro / ultima.nomina) * 100) : 0;
+
+  // semáforo: rojo si ya te pasaste, ámbar si te queda poco margen, verde si vas bien
+  const nomina = ultima?.nomina || 0;
+  const libre = ultima?.libre ?? 0;
+  const libreState = libre < 0 ? "red" : (nomina > 0 && libre < nomina * 0.15) ? "amber" : "green";
+  const libreCopy = {
+    red: { icon: AlertTriangle, texto: "Ya te pasaste de tu Libre esta quincena" },
+    amber: { icon: AlertTriangle, texto: "Vas ajustado — te queda poco margen" },
+    green: { icon: CheckCircle2, texto: "Vas bien, tienes margen esta quincena" },
+  }[libreState];
+
+  // gasto puro (sin ahorro) como % de la nómina — el ahorro no cuenta para esta métrica
+  const gastoPct = nomina > 0 ? Math.round(((ultima?.gasto || 0) / nomina) * 100) : 0;
+  const gastoAlto = gastoPct >= 75;
 
   return (
     <div className="tab-pane">
       {!hasCapturedToday && (
         <section className="reminder-box">
-          <span>Todavía no has capturado nada esta quincena.</span>
+          <AlertTriangle size={15} />
+          <span>Aún no registras nada esta quincena — toma menos de un minuto.</span>
           <button className="btn-secondary" onClick={onQuickAdd}><Plus size={14} /> Agregar ahora</button>
         </section>
       )}
 
+      {gastoAlto && (
+        <section className="reminder-box gasto-alto-box">
+          <AlertTriangle size={15} />
+          <span>Ya usaste el {gastoPct}% de tu nómina en gastos esta quincena (sin contar el ahorro).</span>
+        </section>
+      )}
+
       <section className="hero">
-        <div className="hero-eyebrow">{ultima ? `Quincena del ${fmtQuincena(ultima.quincena)}` : "Sin movimientos todavía"}</div>
+        <div className="hero-eyebrow-row">
+          <div className="hero-eyebrow">{ultima ? `Quincena del ${fmtQuincena(ultima.quincena)}` : "Sin movimientos todavía"}</div>
+          {racha > 1 && <span className="racha-pill">🔥 {racha} quincenas seguidas</span>}
+        </div>
         <div className="hero-row">
           <div>
             <div className="hero-label">Dinero libre esta quincena</div>
-            <div className={`hero-number ${ultima && ultima.libre < 0 ? "neg" : "pos"}`}>
+            <div className={`hero-number state-${libreState}`}>
               {ultima ? fmtMoney(ultima.libre) : fmtMoney(0)}
+            </div>
+            <div className={`hero-status state-${libreState}`}>
+              <libreCopy.icon size={14} /> {libreCopy.texto}
             </div>
             {libreDelta !== null && (
               <div className={`hero-delta ${libreDelta >= 0 ? "pos" : "neg"}`}>
@@ -714,19 +946,52 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
       </section>
 
       <section className="stat-row">
-        <StatChip icon={Wallet} label="Ingreso total" value={ultima?.ingreso || 0} tone="forest" />
-        <StatChip icon={TrendingDown} label="Gasto total" value={ultima?.gasto || 0} tone="brick" />
-        <StatChip icon={PiggyBank} label="Ahorro" value={ultima?.ahorro || 0} tone="gold" />
-        <StatChip icon={Receipt} label="Gasto seguro" value={ultima?.gastoSeguro || 0} tone="ink" />
+        <StatChip icon={Wallet} label="Ingreso total" hint="lo que entró esta quincena" value={ultima?.ingreso || 0} tone="forest" />
+        <StatChip icon={TrendingDown} label="Gasto total" hint="lo que ya gastaste" value={ultima?.gasto || 0} tone="brick" />
+        <StatChip icon={PiggyBank} label="Ahorro" hint="lo que apartaste" value={ultima?.ahorro || 0} tone="gold" />
+        <StatChip icon={Receipt} label="Gasto seguro" hint="gasto + ahorro comprometido" value={ultima?.gastoSeguro || 0} tone="ink" />
       </section>
 
       {alertas.length > 0 && (
         <section className="alert-box">
           <AlertTriangle size={16} />
           <div>
-            <strong>{alertas.length} {alertas.length === 1 ? "categoría excedida" : "categorías excedidas"} esta quincena: </strong>
-            {alertas.map((a) => a.nombre).join(", ")}
+            <strong>{alertas.length} {alertas.length === 1 ? "categoría excedida" : "categorías excedidas"} esta quincena</strong>
+            <ul className="alert-list">
+              {alertas.map((a) => (
+                <li key={a.id}>{a.nombre}: {fmtMoney(a.actual - a.presupuesto)} sobre presupuesto</li>
+              ))}
+            </ul>
           </div>
+        </section>
+      )}
+
+      {(anterior || recentMovs?.length > 0) && (
+        <section className="recap-row">
+          {anterior && (
+            <div className="panel recap-panel">
+              <div className="panel-title">Cierre de la quincena pasada</div>
+              <div className="recap-grid">
+                <div><span>Ingreso</span><strong className="c-forest">{fmtMoney(anterior.ingreso)}</strong></div>
+                <div><span>Gasto</span><strong className="c-brick">{fmtMoney(anterior.gasto)}</strong></div>
+                <div><span>Ahorro</span><strong className="c-gold">{fmtMoney(anterior.ahorro)}</strong></div>
+                <div><span>Libre</span><strong className={anterior.libre < 0 ? "c-brick" : "c-forest"}>{fmtMoney(anterior.libre)}</strong></div>
+              </div>
+            </div>
+          )}
+          {recentMovs?.length > 0 && (
+            <div className="panel recap-panel">
+              <div className="panel-title">Recién agregado</div>
+              <ul className="recent-list">
+                {recentMovs.slice(0, 6).map((m) => (
+                  <li key={m.id}>
+                    <span className={`tone-text-${m.tipo}`}>{m.categoria}</span>
+                    <span className="num">{fmtMoney(m.monto)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 
@@ -743,7 +1008,12 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
                 <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 12, color: "#C7CCD6" }} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <div className="empty-note">Todavía no hay gastos registrados.</div>}
+          ) : (
+            <div className="empty-note-cta">
+              <div>Todavía no hay gastos registrados.</div>
+              <button className="btn-secondary" onClick={onQuickAdd}><Plus size={13} /> Agregar el primero</button>
+            </div>
+          )}
         </div>
 
         <div className="panel">
@@ -761,7 +1031,12 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
                 <Line type="monotone" dataKey="Libre" stroke="#818CF8" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
-          ) : <div className="empty-note">Todavía no hay movimientos registrados.</div>}
+          ) : (
+            <div className="empty-note-cta">
+              <div>Todavía no hay movimientos registrados.</div>
+              <button className="btn-secondary" onClick={onQuickAdd}><Plus size={13} /> Agregar el primero</button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -796,21 +1071,71 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
   );
 }
 
-function GridCell({ value, placeholder, onCommit, tone }) {
+function GridCell({ value, placeholder, onCommit, tone, nota, onSaveNota }) {
   const [draft, setDraft] = useState(value === "" || value === undefined ? "" : String(value));
+  const [justSaved, setJustSaved] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(nota || "");
+  const pressTimer = useRef(null);
+
   useEffect(() => {
     setDraft(value === "" || value === undefined ? "" : String(value));
   }, [value]);
+  useEffect(() => {
+    setNoteDraft(nota || "");
+  }, [nota]);
+
+  const commit = () => {
+    if (draft !== (value === "" || value === undefined ? "" : String(value))) {
+      onCommit(draft);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 700);
+    }
+  };
+
+  const hasAmount = value !== "" && value !== undefined;
+  const startPress = () => {
+    if (!hasAmount || !onSaveNota) return;
+    pressTimer.current = setTimeout(() => setNoteOpen(true), 550);
+  };
+  const cancelPress = () => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+  };
+
   return (
-    <input
-      type="number"
-      className={`grid-cell-input tone-text-${tone}`}
-      value={draft}
-      placeholder={placeholder}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => { if (draft !== (value === "" || value === undefined ? "" : String(value))) onCommit(draft); }}
-      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-    />
+    <div className="grid-cell-wrap">
+      <input
+        type="number"
+        className={`grid-cell-input tone-text-${tone} ${justSaved ? "just-saved" : ""}`}
+        value={draft}
+        placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+        onTouchStart={startPress}
+        onTouchEnd={cancelPress}
+        onTouchMove={cancelPress}
+        onMouseDown={startPress}
+        onMouseUp={cancelPress}
+        onMouseLeave={cancelPress}
+        onContextMenu={(e) => { if (hasAmount && onSaveNota) e.preventDefault(); }}
+      />
+      {nota && <span className="nota-dot" title={nota} />}
+      {noteOpen && (
+        <div className="note-popover" onClick={(e) => e.stopPropagation()}>
+          <textarea
+            autoFocus
+            placeholder="Agrega una nota para este movimiento…"
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+          />
+          <div className="note-popover-actions">
+            <button className="btn-secondary" onClick={() => setNoteOpen(false)}>Cancelar</button>
+            <button className="btn-primary" onClick={() => { onSaveNota(noteDraft); setNoteOpen(false); }}><Check size={14} /> Guardar</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -820,7 +1145,8 @@ function CatIcon({ nombre, tipo }) {
   return <span className={`cat-icon tone-bg-${tipo}`}>{nombre.charAt(0)}</span>;
 }
 
-function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, updateCell, lastNomina, onAddQuincena, todayQ }) {
+function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, updateCell, lastNomina, onAddQuincena, todayQ, notaMap, updateNota }) {
+  const [mobileView, setMobileView] = useState("tarjetas"); // "tarjetas" | "cuadricula"
   const groups = [
     { tipo: "Ingreso", label: "Ingresos" },
     { tipo: "Vale", label: "Vales" },
@@ -833,10 +1159,20 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
 
   return (
     <div className="tab-pane">
-      <section className="panel">
+      <section className={`panel mobile-view-${mobileView}`}>
         <div className="panel-title-row">
           <div className="panel-title">Captura quincenal</div>
-          <button className="btn-secondary" onClick={onAddQuincena}><Plus size={14} /> Agregar quincena</button>
+          <div className="panel-title-actions">
+            <div className="view-toggle">
+              <button className={mobileView === "tarjetas" ? "active" : ""} onClick={() => setMobileView("tarjetas")} aria-label="Ver como tarjetas">
+                <Rows3 size={14} />
+              </button>
+              <button className={mobileView === "cuadricula" ? "active" : ""} onClick={() => setMobileView("cuadricula")} aria-label="Ver como cuadrícula">
+                <Table2 size={14} />
+              </button>
+            </div>
+            <button className="btn-secondary" onClick={onAddQuincena}><Plus size={14} /> Agregar quincena</button>
+          </div>
         </div>
 
         <div className="desktop-only">
@@ -884,6 +1220,8 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
                             placeholder={placeholder ? String(placeholder) : ""}
                             onCommit={(v) => updateCell(q, c.nombre, v)}
                             tone={g.tipo}
+                            nota={notaMap[key]}
+                            onSaveNota={(text) => updateNota(q, c.nombre, text)}
                           />
                         </td>
                       );
@@ -919,6 +1257,8 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
             updateCell={updateCell}
             lastNomina={lastNomina}
             todayQ={todayQ}
+            notaMap={notaMap}
+            updateNota={updateNota}
           />
         </div>
       </section>
@@ -926,7 +1266,7 @@ function GridTab({ categorias, periods, cellMap, statsMap, categoriaResumen, upd
   );
 }
 
-function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCell, lastNomina, todayQ }) {
+function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCell, lastNomina, todayQ, notaMap, updateNota }) {
   const todayIdx = periods.indexOf(todayQ);
   const [idx, setIdx] = useState(todayIdx >= 0 ? todayIdx : periods.length - 1);
 
@@ -966,7 +1306,8 @@ function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCel
 
       <div className="mobile-cat-list">
         {categorias.map((c) => {
-          const raw = cellMap[`${q}|${c.nombre}`];
+          const key = `${q}|${c.nombre}`;
+          const raw = cellMap[key];
           const placeholder = (c.nombre === "Nómina" || c.esNomina) && raw === undefined ? lastNomina : "";
           return (
             <div className="mobile-cat-row" key={c.id}>
@@ -981,6 +1322,8 @@ function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCel
                   placeholder={placeholder ? String(placeholder) : ""}
                   onCommit={(v) => updateCell(q, c.nombre, v)}
                   tone={c.tipo}
+                  nota={notaMap[key]}
+                  onSaveNota={(text) => updateNota(q, c.nombre, text)}
                 />
               </div>
             </div>
@@ -992,7 +1335,7 @@ function MobileQuincenaCards({ categorias, periods, cellMap, statsMap, updateCel
   );
 }
 
-function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEditCat, saveEditCat, setEditingCat, deleteCat, newCat, setNewCat, addCategoria, reorderCategorias, setNominaPrincipal }) {
+function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEditCat, saveEditCat, setEditingCat, deleteCat, newCat, setNewCat, addCategoria, reorderCategorias, setNominaPrincipal, toggleCuentaIngreso }) {
   const dragIndex = useRef(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
@@ -1018,7 +1361,7 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
         <div className="table-wrap">
           <table className="ledger-table">
             <thead>
-              <tr><th></th><th>Categoría</th><th>Tipo</th><th style={{ textAlign: "center" }}>Nómina</th><th className="num">Presupuesto quincenal</th><th>Esencial</th><th></th></tr>
+              <tr><th></th><th>Categoría</th><th>Tipo</th><th style={{ textAlign: "center" }}>Nómina</th><th style={{ textAlign: "center" }}>Cuenta en ingreso</th><th className="num">Presupuesto quincenal</th><th></th></tr>
             </thead>
             <tbody>
               {categorias.map((c, i) => {
@@ -1038,7 +1381,7 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
                     <td>{c.nombre}</td>
                     <td>
                       {isEditing ? (
-                        <select value={catDraft.tipo} onChange={(e) => setCatDraft({ ...catDraft, tipo: e.target.value, esencial: (e.target.value === "Ingreso" || e.target.value === "Vale") ? null : catDraft.esencial })}>
+                        <select value={catDraft.tipo} onChange={(e) => setCatDraft({ ...catDraft, tipo: e.target.value })}>
                           <option>Ingreso</option><option>Vale</option><option>Gasto</option><option>Ahorro</option>
                         </select>
                       ) : <span className={`tipo-pill tipo-${c.tipo}`}>{c.tipo}</span>}
@@ -1054,17 +1397,20 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
                         </button>
                       ) : "—"}
                     </td>
+                    <td style={{ textAlign: "center" }}>
+                      {c.tipo === "Ingreso" ? (
+                        <input
+                          type="checkbox"
+                          checked={c.cuentaIngreso !== false}
+                          onChange={() => toggleCuentaIngreso(c.id)}
+                          title={c.cuentaIngreso !== false ? "Cuenta en tu Ingreso total" : "No cuenta en tu Ingreso total (ej. vales, dinero no líquido)"}
+                        />
+                      ) : "—"}
+                    </td>
                     <td className="num">
                       {isEditing ? (
                         <input type="number" min="0" step="0.01" value={catDraft.presupuesto} onChange={(e) => setCatDraft({ ...catDraft, presupuesto: e.target.value })} style={{ width: 110 }} />
                       ) : (c.presupuesto > 0 ? fmtMoney(c.presupuesto) : "—")}
-                    </td>
-                    <td>
-                      {(c.tipo === "Ingreso" || c.tipo === "Vale") ? "—" : isEditing ? (
-                        <select value={catDraft.esencial ? "Sí" : "No"} onChange={(e) => setCatDraft({ ...catDraft, esencial: e.target.value === "Sí" })}>
-                          <option>Sí</option><option>No</option>
-                        </select>
-                      ) : (c.esencial ? "Sí" : "No")}
                     </td>
                     <td className="row-actions">
                       {isEditing ? (
@@ -1104,16 +1450,100 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
             <span>Presupuesto quincenal</span>
             <input type="number" min="0" step="0.01" placeholder="0.00" value={newCat.presupuesto} onChange={(e) => setNewCat({ ...newCat, presupuesto: e.target.value })} />
           </label>
-          {(newCat.tipo !== "Ingreso" && newCat.tipo !== "Vale") && (
-            <label>
-              <span>Esencial</span>
-              <select value={newCat.esencial ? "Sí" : "No"} onChange={(e) => setNewCat({ ...newCat, esencial: e.target.value === "Sí" })}>
-                <option>Sí</option><option>No</option>
-              </select>
-            </label>
-          )}
           <button className="btn-primary" onClick={addCategoria}><Plus size={16} /> Agregar</button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, metaDraft, setMetaDraft, startEditMeta, saveEditMeta, setEditingMeta, deleteMeta, newMeta, setNewMeta, addMeta }) {
+  const totalByNombre = {};
+  categoriaResumen.forEach((c) => { totalByNombre[c.nombre] = c.total; });
+
+  return (
+    <div className="tab-pane">
+      <section className="panel">
+        <div className="panel-title">Tus metas de ahorro</div>
+        {metas.length === 0 ? (
+          <div className="empty-note">Todavía no tienes metas — agrega una abajo.</div>
+        ) : (
+          <div className="metas-list">
+            {metas.map((m) => {
+              const actual = m.categoria ? (totalByNombre[m.categoria] || 0) : (m.montoManual || 0);
+              const pct = m.montoObjetivo > 0 ? Math.min(100, Math.round((actual / m.montoObjetivo) * 100)) : 0;
+              const isEditing = editingMeta === m.id;
+              return (
+                <div className="meta-card" key={m.id}>
+                  {isEditing ? (
+                    <div className="meta-edit-form">
+                      <input type="text" placeholder="Nombre" value={metaDraft.nombre} onChange={(e) => setMetaDraft({ ...metaDraft, nombre: e.target.value })} />
+                      <input type="number" min="0" step="0.01" placeholder="Monto objetivo" value={metaDraft.montoObjetivo} onChange={(e) => setMetaDraft({ ...metaDraft, montoObjetivo: e.target.value })} />
+                      <select value={metaDraft.categoria || ""} onChange={(e) => setMetaDraft({ ...metaDraft, categoria: e.target.value })}>
+                        <option value="">Manual (yo escribo el avance)</option>
+                        {categoriasAhorro.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                      </select>
+                      {!metaDraft.categoria && (
+                        <input type="number" min="0" step="0.01" placeholder="Cuánto llevas ya" value={metaDraft.montoManual} onChange={(e) => setMetaDraft({ ...metaDraft, montoManual: e.target.value })} />
+                      )}
+                      <div className="meta-edit-actions">
+                        <button className="icon-btn" onClick={saveEditMeta} aria-label="Guardar"><Check size={14} /></button>
+                        <button className="icon-btn" onClick={() => setEditingMeta(null)} aria-label="Cancelar"><X size={14} /></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="meta-card-head">
+                        <div className="meta-card-name">{m.nombre}</div>
+                        <div className="row-actions">
+                          <button className="icon-btn" onClick={() => startEditMeta(m)} aria-label="Editar"><Pencil size={14} /></button>
+                          <button className="icon-btn" onClick={() => deleteMeta(m.id)} aria-label="Eliminar"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                      <div className="meta-progress-track"><div className="meta-progress-fill" style={{ width: `${pct}%` }} /></div>
+                      <div className="meta-card-nums">
+                        <span>{fmtMoney(actual)} de {fmtMoney(m.montoObjetivo)}</span>
+                        <span className="meta-pct">{pct}%</span>
+                      </div>
+                      {m.categoria && <div className="meta-card-link">Vinculada a "{m.categoria}" — se actualiza sola</div>}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="panel-title">Agregar meta</div>
+        <div className="form-row">
+          <label>
+            <span>Nombre</span>
+            <input type="text" placeholder="Ej. Viaje, Fondo de emergencia" value={newMeta.nombre} onChange={(e) => setNewMeta({ ...newMeta, nombre: e.target.value })} />
+          </label>
+          <label>
+            <span>Monto objetivo</span>
+            <input type="number" min="0" step="0.01" placeholder="0.00" value={newMeta.montoObjetivo} onChange={(e) => setNewMeta({ ...newMeta, montoObjetivo: e.target.value })} />
+          </label>
+          <label>
+            <span>Vincular a categoría</span>
+            <select value={newMeta.categoria} onChange={(e) => setNewMeta({ ...newMeta, categoria: e.target.value })}>
+              <option value="">Manual (yo escribo el avance)</option>
+              {categoriasAhorro.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+            </select>
+          </label>
+          {!newMeta.categoria && (
+            <label>
+              <span>Cuánto llevas ya</span>
+              <input type="number" min="0" step="0.01" placeholder="0.00" value={newMeta.montoManual} onChange={(e) => setNewMeta({ ...newMeta, montoManual: e.target.value })} />
+            </label>
+          )}
+          <button className="btn-primary" onClick={addMeta}><Plus size={16} /> Agregar</button>
+        </div>
+        {categoriasAhorro.length === 0 && (
+          <div className="grid-hint" style={{ marginTop: 10 }}>Tip: si vinculas una meta a una categoría de Ahorro (ej. "Tanda"), el avance se calcula solo con lo que ya capturas en la Tabla — no necesitas escribirlo dos veces.</div>
+        )}
       </section>
     </div>
   );
