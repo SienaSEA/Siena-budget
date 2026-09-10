@@ -6,6 +6,13 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# El service worker siempre debe pedirse fresco, para que detecte
+# actualizaciones de la app y no se quede pegado en una versión vieja.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 # Todas las rutas del front sirven index.html (app de una sola página)
 [[redirects]]
   from = "/*"

@@ -89,7 +89,7 @@ const MOVIMIENTOS_DEFAULT = [
   { id: 55, fecha: "2026-12-30", categoria: "Vales", monto: 3500, notas: "" },
 ];
 
-const PIE_COLORS = ["#4ADE80", "#818CF8", "#FB7185", "#38BDF8", "#FBBF24", "#A78BFA", "#34D399", "#F472B6", "#94A3B8"];
+const PIE_COLORS = ["#5B7A63", "#A9713D", "#7D8CA3", "#B4655B", "#8C7D9E", "#6B8E9E", "#A68A5B", "#7A6B8C", "#8A8A84"];
 
 const DEFAULT_PADDING = 4;
 
@@ -131,6 +131,33 @@ function prevQuincenaISO(iso) {
     return toISO(new Date(d.getFullYear(), d.getMonth(), 0));
   }
   return toISO(new Date(d.getFullYear(), d.getMonth(), 15));
+}
+
+// Cuenta cuántas quincenas hay entre dos fechas de corte (para saber cuántas
+// ya pasaron desde que se creó una meta, y así recalcular el plazo restante).
+function countQuincenasBetween(fromQ, toQ) {
+  if (!fromQ || !toQ || fromQ >= toQ) return 0;
+  let count = 0;
+  let q = fromQ;
+  let guard = 0;
+  while (q < toQ && guard < 500) {
+    q = nextQuincenaISO(q);
+    count++;
+    guard++;
+  }
+  return count;
+}
+
+// Dado el avance actual de una meta, calcula cuánto falta ahorrar por
+// quincena para cumplir el plazo que el usuario definió.
+function computeMetaPlan(m, actual, todayQ) {
+  if (!m.plazoQuincenas || m.plazoQuincenas <= 0) return null;
+  const transcurridas = countQuincenasBetween(m.creadaQuincena || todayQ, todayQ);
+  const restantes = Math.max(0, m.plazoQuincenas - transcurridas);
+  const faltante = Math.max(0, m.montoObjetivo - actual);
+  if (faltante === 0) return { restantes, recomendado: 0, lograda: true, vencido: false };
+  if (restantes === 0) return { restantes: 0, recomendado: faltante, lograda: false, vencido: true };
+  return { restantes, recomendado: faltante / restantes, lograda: false, vencido: false };
 }
 
 function buildPeriods(movEnriched, padding) {
@@ -249,6 +276,16 @@ export default function App() {
   // Lo ocultamos de forma agresiva: por selector, y con un observer que
   // vigila el DOM por si el widget lo vuelve a insertar después.
   useEffect(() => {
+    // Modo vista previa local: SOLO se activa con `npm run dev` (Vite),
+    // nunca en el sitio real desplegado (import.meta.env.DEV es siempre
+    // false en el build de producción). Salta el login por completo para
+    // poder revisar cambios visuales sin Netlify CLI ni conexión.
+    if (import.meta.env.DEV) {
+      setUser({ email: "vista-previa-local" });
+      setAuthReady(true);
+      return;
+    }
+
     const idt = window.netlifyIdentity;
     if (!idt) { setAuthReady(true); return; }
 
@@ -295,6 +332,18 @@ export default function App() {
   // --- load this user's data once logged in, seed on first run ---
   useEffect(() => {
     if (!user) return;
+
+    if (import.meta.env.DEV) {
+      // Vista previa local: datos de ejemplo en memoria, sin llamar a
+      // ninguna función de Netlify (no hay backend disponible con `npm run dev`).
+      setCategorias(CATEGORIAS_DEFAULT);
+      setMovimientos(MOVIMIENTOS_DEFAULT);
+      setMetas([]);
+      setPadding(DEFAULT_PADDING);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     (async () => {
       try {
@@ -326,6 +375,12 @@ export default function App() {
   }, [user]);
 
   const persistAll = useCallback(async (nextCats, nextMovs, nextPad, nextMetas) => {
+    if (import.meta.env.DEV) {
+      // Vista previa local: solo en memoria, no hay backend que guardar.
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 1200);
+      return;
+    }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setSaveStatus("offline");
       return;
@@ -626,9 +681,9 @@ export default function App() {
   // --- Metas de ahorro ---
   const [editingMeta, setEditingMeta] = useState(null);
   const [metaDraft, setMetaDraft] = useState({});
-  const [newMeta, setNewMeta] = useState({ nombre: "", montoObjetivo: "", categoria: "", montoManual: "" });
+  const [newMeta, setNewMeta] = useState({ nombre: "", montoObjetivo: "", categoria: "", montoManual: "", plazoQuincenas: "" });
 
-  const startEditMeta = (m) => { setEditingMeta(m.id); setMetaDraft({ ...m, categoria: m.categoria || "" }); };
+  const startEditMeta = (m) => { setEditingMeta(m.id); setMetaDraft({ ...m, categoria: m.categoria || "", plazoQuincenas: m.plazoQuincenas || "" }); };
   const saveEditMeta = () => {
     const next = metas.map((m) => (m.id === editingMeta ? {
       ...m,
@@ -636,6 +691,9 @@ export default function App() {
       montoObjetivo: parseFloat(metaDraft.montoObjetivo) || 0,
       categoria: metaDraft.categoria || null,
       montoManual: metaDraft.categoria ? 0 : (parseFloat(metaDraft.montoManual) || 0),
+      plazoQuincenas: parseInt(metaDraft.plazoQuincenas, 10) || null,
+      // si cambia el plazo, reiniciamos el conteo de quincenas transcurridas desde hoy
+      creadaQuincena: (parseInt(metaDraft.plazoQuincenas, 10) || null) !== m.plazoQuincenas ? todayQ : m.creadaQuincena,
     } : m));
     persistMetas(next);
     setEditingMeta(null);
@@ -649,8 +707,10 @@ export default function App() {
       montoObjetivo: parseFloat(newMeta.montoObjetivo) || 0,
       categoria: newMeta.categoria || null,
       montoManual: newMeta.categoria ? 0 : (parseFloat(newMeta.montoManual) || 0),
+      plazoQuincenas: parseInt(newMeta.plazoQuincenas, 10) || null,
+      creadaQuincena: todayQ,
     }]);
-    setNewMeta({ nombre: "", montoObjetivo: "", categoria: "", montoManual: "" });
+    setNewMeta({ nombre: "", montoObjetivo: "", categoria: "", montoManual: "", plazoQuincenas: "" });
   };
 
   if (!authReady) {
@@ -758,6 +818,7 @@ export default function App() {
             onQuickAdd={openFab}
             racha={racha}
             recentMovs={recentMovs}
+            metas={metas}
           />
         )}
 
@@ -797,6 +858,7 @@ export default function App() {
             editingMeta={editingMeta} metaDraft={metaDraft} setMetaDraft={setMetaDraft}
             startEditMeta={startEditMeta} saveEditMeta={saveEditMeta} setEditingMeta={setEditingMeta}
             deleteMeta={deleteMeta} newMeta={newMeta} setNewMeta={setNewMeta} addMeta={addMeta}
+            todayQ={todayQ}
           />
         )}
       </main>
@@ -864,7 +926,7 @@ function HeroRing({ pct, label }) {
   return (
     <div className="hero-ring-wrap">
       <svg width="128" height="128" viewBox="0 0 128 128">
-        <circle cx="64" cy="64" r={r} fill="none" stroke="#2E333D" strokeWidth="12" />
+        <circle cx="64" cy="64" r={r} fill="none" stroke="#E8E6E0" strokeWidth="12" />
         <circle
           cx="64" cy="64" r={r} fill="none" stroke="url(#ringGrad)" strokeWidth="12"
           strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
@@ -872,8 +934,8 @@ function HeroRing({ pct, label }) {
         />
         <defs>
           <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#4ADE80" />
-            <stop offset="100%" stopColor="#22C55E" />
+            <stop offset="0%" stopColor="#16A34A" />
+            <stop offset="100%" stopColor="#15803D" />
           </linearGradient>
         </defs>
       </svg>
@@ -885,8 +947,10 @@ function HeroRing({ pct, label }) {
   );
 }
 
-function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pieData, hasCapturedToday, onQuickAdd, racha, recentMovs }) {
+function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pieData, hasCapturedToday, onQuickAdd, racha, recentMovs, metas }) {
   const libreDelta = ultima && anterior ? ultima.libre - anterior.libre : null;
+  const totalByNombreMeta = {};
+  categoriaResumen.forEach((c) => { totalByNombreMeta[c.nombre] = c.total; });
   const comprometidoPct = ultima && ultima.nomina ? Math.round((ultima.gastoSeguro / ultima.nomina) * 100) : 0;
 
   // semáforo: rojo si ya te pasaste, ámbar si te queda poco margen, verde si vas bien
@@ -995,6 +1059,37 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
         </section>
       )}
 
+      {metas.length > 0 && (
+        <section className="panel">
+          <div className="panel-title">Tus metas</div>
+          <div className="metas-summary-list">
+            {metas.map((m) => {
+              const actual = m.categoria ? (totalByNombreMeta[m.categoria] || 0) : (m.montoManual || 0);
+              const pct = m.montoObjetivo > 0 ? Math.min(100, Math.round((actual / m.montoObjetivo) * 100)) : 0;
+              const plan = computeMetaPlan(m, actual, ultima?.quincena);
+              return (
+                <div className="metas-summary-row" key={m.id}>
+                  <div className="metas-summary-head">
+                    <span className="metas-summary-name">{m.nombre}</span>
+                    <span className="meta-pct">{pct}%</span>
+                  </div>
+                  <div className="meta-progress-track"><div className="meta-progress-fill" style={{ width: `${pct}%` }} /></div>
+                  {plan && (
+                    <div className={`meta-plan ${plan.vencido ? "meta-plan-warn" : ""}`}>
+                      {plan.lograda
+                        ? "🎉 ¡Meta lograda!"
+                        : plan.vencido
+                          ? `Plazo vencido — faltan ${fmtMoney(plan.recomendado)}`
+                          : `${fmtMoney(plan.recomendado)}/quincena para lograrlo en ${plan.restantes} quincena${plan.restantes === 1 ? "" : "s"}`}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="charts-row">
         <div className="panel">
           <div className="panel-title">Gasto acumulado por categoría</div>
@@ -1002,10 +1097,10 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={3}>
-                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="#1B1E24" strokeWidth={2} />)}
+                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="#FFFFFF" strokeWidth={2} />)}
                 </Pie>
-                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={{ background: "#22262E", border: "1px solid #333844", borderRadius: 10, color: "#F4F5F7" }} />
-                <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 12, color: "#C7CCD6" }} />
+                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={{ background: "#FFFFFF", border: "1px solid #E8E6E0", borderRadius: 10, color: "#1A1D21" }} />
+                <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 12, color: "#45484D" }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -1021,14 +1116,14 @@ function ResumenTab({ ultima, anterior, categoriaResumen, alertas, trendData, pi
           {trendData.length ? (
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={trendData} margin={{ top: 6, right: 12, left: -10, bottom: 0 }}>
-                <CartesianGrid stroke="#2E333D" strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#8B92A0" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#8B92A0" }} />
-                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={{ background: "#22262E", border: "1px solid #333844", borderRadius: 10, color: "#F4F5F7" }} />
-                <Legend wrapperStyle={{ fontSize: 12, color: "#8B92A0" }} />
-                <Line type="monotone" dataKey="Ingreso" stroke="#4ADE80" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="Gasto" stroke="#FB7185" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="Libre" stroke="#818CF8" strokeWidth={2.5} dot={false} />
+                <CartesianGrid stroke="#E8E6E0" strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9C9C96" }} />
+                <YAxis tick={{ fontSize: 11, fill: "#9C9C96" }} />
+                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={{ background: "#FFFFFF", border: "1px solid #E8E6E0", borderRadius: 10, color: "#1A1D21" }} />
+                <Legend wrapperStyle={{ fontSize: 12, color: "#6B6B64" }} />
+                <Line type="monotone" dataKey="Ingreso" stroke="#16A34A" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="Gasto" stroke="#DC2626" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="Libre" stroke="#57534E" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -1457,7 +1552,7 @@ function CategoriasTab({ categorias, editingCat, catDraft, setCatDraft, startEdi
   );
 }
 
-function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, metaDraft, setMetaDraft, startEditMeta, saveEditMeta, setEditingMeta, deleteMeta, newMeta, setNewMeta, addMeta }) {
+function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, metaDraft, setMetaDraft, startEditMeta, saveEditMeta, setEditingMeta, deleteMeta, newMeta, setNewMeta, addMeta, todayQ }) {
   const totalByNombre = {};
   categoriaResumen.forEach((c) => { totalByNombre[c.nombre] = c.total; });
 
@@ -1472,6 +1567,7 @@ function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, meta
             {metas.map((m) => {
               const actual = m.categoria ? (totalByNombre[m.categoria] || 0) : (m.montoManual || 0);
               const pct = m.montoObjetivo > 0 ? Math.min(100, Math.round((actual / m.montoObjetivo) * 100)) : 0;
+              const plan = computeMetaPlan(m, actual, todayQ);
               const isEditing = editingMeta === m.id;
               return (
                 <div className="meta-card" key={m.id}>
@@ -1486,6 +1582,7 @@ function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, meta
                       {!metaDraft.categoria && (
                         <input type="number" min="0" step="0.01" placeholder="Cuánto llevas ya" value={metaDraft.montoManual} onChange={(e) => setMetaDraft({ ...metaDraft, montoManual: e.target.value })} />
                       )}
+                      <input type="number" min="0" step="1" placeholder="¿En cuántas quincenas lo quieres?" value={metaDraft.plazoQuincenas} onChange={(e) => setMetaDraft({ ...metaDraft, plazoQuincenas: e.target.value })} />
                       <div className="meta-edit-actions">
                         <button className="icon-btn" onClick={saveEditMeta} aria-label="Guardar"><Check size={14} /></button>
                         <button className="icon-btn" onClick={() => setEditingMeta(null)} aria-label="Cancelar"><X size={14} /></button>
@@ -1506,6 +1603,15 @@ function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, meta
                         <span className="meta-pct">{pct}%</span>
                       </div>
                       {m.categoria && <div className="meta-card-link">Vinculada a "{m.categoria}" — se actualiza sola</div>}
+                      {plan && (
+                        <div className={`meta-plan ${plan.vencido ? "meta-plan-warn" : ""}`}>
+                          {plan.lograda
+                            ? "🎉 ¡Meta lograda!"
+                            : plan.vencido
+                              ? `Se venció el plazo — todavía faltan ${fmtMoney(plan.recomendado)}`
+                              : `Ahorra ${fmtMoney(plan.recomendado)} por quincena para lograrlo en ${plan.restantes} quincena${plan.restantes === 1 ? "" : "s"} más`}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1539,10 +1645,14 @@ function MetasTab({ metas, categoriasAhorro, categoriaResumen, editingMeta, meta
               <input type="number" min="0" step="0.01" placeholder="0.00" value={newMeta.montoManual} onChange={(e) => setNewMeta({ ...newMeta, montoManual: e.target.value })} />
             </label>
           )}
+          <label>
+            <span>¿En cuántas quincenas lo quieres?</span>
+            <input type="number" min="0" step="1" placeholder="Ej. 10" value={newMeta.plazoQuincenas} onChange={(e) => setNewMeta({ ...newMeta, plazoQuincenas: e.target.value })} />
+          </label>
           <button className="btn-primary" onClick={addMeta}><Plus size={16} /> Agregar</button>
         </div>
         {categoriasAhorro.length === 0 && (
-          <div className="grid-hint" style={{ marginTop: 10 }}>Tip: si vinculas una meta a una categoría de Ahorro (ej. "Tanda"), el avance se calcula solo con lo que ya capturas en la Tabla — no necesitas escribirlo dos veces.</div>
+          <div className="grid-hint" style={{ marginTop: 10 }}>Tip: si vinculas una meta a una categoría de Ahorro (ej. "Tanda"), el avance se calcula solo con lo que ya capturas en la Tabla — no necesitas escribirlo dos veces. Si además le pones un plazo, te decimos cuánto ahorrar por quincena.</div>
         )}
       </section>
     </div>
